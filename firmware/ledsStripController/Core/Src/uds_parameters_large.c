@@ -109,7 +109,7 @@
 					{.name="IC In: $2.0f""\xB0""C, Out: $2.0f""\xB0""C",		.udsParamId={23,	22		}}, //param couple: Intercooler input/output  air temperature
 					{.name="Battery: $2.0f%, $3.1fA",							.udsParamId={3,		4		}}, //param couple: Voltage and SoC
 					{.name="Battery: $2.0f%, $2.1fV",							.udsParamId={3,		35		}}, //param couple: Current and SoC
-					{.name="Battery: $2.0f%, $2.1fV, $3.1fA ",					.udsParamId={254,   254		}}, //param group: Voltage, Current, SoC,
+					{.name="Battery: $2.0f%, $2.1fV, $3.1fA",					.udsParamId={254,   254		}}, //param group: Voltage, Current, SoC,
 					{.name="Exh.: $3.0f""\xB0""C, Cat.: $3.0f""\xB0""C",		.udsParamId={40,	41		}}, //param couple: Exhaust/Catalyst air temperature
 					{.name="RAIL: $4.0fbar, GPF: $2.0f%",						.udsParamId={83,	55		}}, //param couple: Rail pressure / GPF clogging
 					{.name="Power: $3.0fHp, $3.0fNm",							.udsParamId={1,		2		}}, //param couple: PWR and Torque
@@ -176,7 +176,7 @@
 						{.name="Oil: $2.0fmm, $2.0f%",						.udsParamId={64,	63		}}, //param couple: OIL level and Oil Quality
 						{.name="Battery: $2.0f%, $3.1fA",					.udsParamId={3,		4		}}, //param couple: Voltage and SoC
 						{.name="Battery: $2.0f%, $2.1fV",					.udsParamId={3,		62		}}, //param couple: Current and SoC
-						{.name="Battery: $2.0f%, $2.1fV, $3.1fA ",			.udsParamId={253,   253		}}, //param group: SoC, Voltage, Current
+						{.name="Battery: $2.0f%, $2.1fV, $3.1fA",			.udsParamId={253,   253		}}, //param group: SoC, Voltage, Current
 						{.name="DPF clogging: $2.0f% $3.0f""\xB0""C",		.udsParamId={55,	56		}}, //param couple: DPF clogging percentage and temperature
 						{.name="Regen status $2.0f% $3.0f""\xB0""C",		.udsParamId={57,	56		}}, //param couple: DPF regeneration progress percentage and temperature
 						{.name="Engine power: $3.0fHp",						.udsParamId={1,		1		}}, //Power
