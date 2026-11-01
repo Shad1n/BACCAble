@@ -25,3 +25,12 @@ Include:
 + Gaucho's Read Faults (extended menu system and long OK button push)
 + Netzmark's Mute on reverse (created options in setup menu)
 + Gaucho's Commit 6b11dc1
+
+
+v3.9.1.2
+Menu reorder
+Restore radio text afret exit Baccable
+
+v3.9.2.3
+Gaucho's master v3.9.2
+Menu order system rethinking for easy reorder
