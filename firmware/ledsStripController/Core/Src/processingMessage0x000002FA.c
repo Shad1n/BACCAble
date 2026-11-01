@@ -12,8 +12,6 @@
 /* Menu restructuring: legacy IDs remain unchanged; 16=Features, 17=Exit. */
 #if defined(C1baccable)
 static uint8_t baccableFeaturesActive = 0;
-static const uint8_t baccableMainOrder[] = {0,1,10,9,16,4};
-static const uint8_t baccableFeatureOrder[] = {17,5,7,8,11,12,15,14,13,2,3};
 static uint8_t baccableMenuAllowed(uint8_t id) {
     switch(id) {
         case 2: return function_read_faults_enabled != 0;
@@ -28,7 +26,7 @@ static uint8_t baccableMenuAllowed(uint8_t id) {
 }
 static void baccableMenuStep(int direction) {
     const uint8_t *order = baccableFeaturesActive ? baccableFeatureOrder : baccableMainOrder;
-    const uint8_t count = baccableFeaturesActive ? sizeof(baccableFeatureOrder) : sizeof(baccableMainOrder);
+    const uint8_t count = baccableFeaturesActive ? baccableFeatureMenuCount : baccableMainMenuCount;
     uint8_t position = 0;
     for(uint8_t i=0;i<count;i++) if(order[i]==main_dashboardPageIndex) { position=i; break; }
     for(uint8_t tries=0;tries<count;tries++) {

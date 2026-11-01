@@ -7,6 +7,39 @@
 #include "globalVariables.h"
 
 
+/* Actual display order (not the legacy text-array order).
+ * Keep IDs stable: dashboard_main_menu_array rows are modified at runtime.
+ * ESC/TC stays hidden from navigation and is controlled by the stalk.
+ */
+#if defined(C1baccable)
+const uint8_t baccableMainOrder[] = {
+    MENU_VERSION,
+    MENU_SHOW_PARAMETERS,
+    MENU_PARAMS_SETUP,
+    MENU_MAIN_SETUP,
+    MENU_FEATURES,
+    MENU_IMMOBILIZER
+};
+
+const uint8_t baccableFeatureOrder[] = {
+    MENU_FEATURES_EXIT,
+    MENU_DYNO,
+    MENU_FRONT_BRAKE,
+    MENU_4WD,
+    MENU_HAS,
+    MENU_EXHAUST,
+    MENU_MAX_HOLD,
+    MENU_RESET_STATISTICS,
+    MENU_SAVE_LOG,
+    MENU_READ_FAULTS,
+    MENU_CLEAR_FAULTS
+};
+
+/* Counts follow the arrays automatically when menu items are moved. */
+const uint8_t baccableMainMenuCount = (uint8_t)(sizeof baccableMainOrder / sizeof baccableMainOrder[0]);
+const uint8_t baccableFeatureMenuCount = (uint8_t)(sizeof baccableFeatureOrder / sizeof baccableFeatureOrder[0]);
+#endif
+
 const char *FW_VERSION=_FW_VERSION;
 
 // force print
@@ -170,24 +203,24 @@ const char *FW_VERSION=_FW_VERSION;
 	uint8_t maxHold_enabled=0; // 0=Max Hold OFF, 1=Max Hold ON (RAM only, resets on power cycle)
 	uint8_t dashboard_main_menu_array_len=18;
 	uint8_t dashboard_main_menu_array[20][30]={
-			{},
-			{'S','h','o','w',' ','p','a','r','a','m','e','t','e','r','s',' ',' ',' '},
-			{'R','e','a','d',' ','f','a','u','l','t','s',' ',' ',' ',' ',' ',' ',' '},
-			{'C','l','e','a','r',' ','f','a','u','l','t','s',' ',' ',' ',' ',' ',' '},
-			{'I','m','m','o','b','i','l','i','z','e','r',' ','O','n',' ',' ',' ',' '},
-			{'T','o','g','g','l','e',' ','D','Y','N','O',' ',' ',' ',' ',' ',' ',' '},
-			{'T','o','g','g','l','e',' ','E','S','C','/','T','C',' ',' ',' ',' ',' '},
-			{'F','r','o','n','t',' ','b','r','a','k','e',' ','N','o','r','m','a','l'},
-			{'4','W','D',' ',' ','e','n','a','b','l','e','d',' ',' ',' ',' ',' ',' '},
-			{'M','a','i','n',' ','s','e','t','u','p',' ','m','e','n','u',' ',' ',' '},
-			{'P','a','r','a','m','s',' ','s','e','t','u','p',' ','m','e','n','u',' '},
-			{'E','n','a','b','l','e',' ','H','A','S',' ',' ',' ',' ',' ',' ',' ',' '},
-			{'T','o','g','g','l','e',' ','e','x','h','a','u','s','t',' ',' ',' ',' '}, // exhaust valves DR 11/10/2026 - was "Toggle QV Valve"
-			{'S','a','v','e',' ','l','o','g',' ','t','o',' ','f','i','l','e',' ',' '},
-			{'R','e','s','e','t',' ','s','t','a','t','i','s','t','i','c','s',' ',' '},
-			{'M','a','x',' ','h','o','l','d',' ','O','f','f',' ',' ',' ',' ',' ',' '},
-            {'F','e','a','t','u','r','e','s',' ','m','e','n','u',' ',' ',' ',' ',' '},
-            {'E','x','i','t',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' '},
+			{}, // [ 0] MENU_VERSION
+			{'S','h','o','w',' ','p','a','r','a','m','e','t','e','r','s',' ',' ',' '}, // [ 1] MENU_SHOW_PARAMETERS
+			{'R','e','a','d',' ','f','a','u','l','t','s',' ',' ',' ',' ',' ',' ',' '}, // [ 2] MENU_READ_FAULTS
+			{'C','l','e','a','r',' ','f','a','u','l','t','s',' ',' ',' ',' ',' ',' '}, // [ 3] MENU_CLEAR_FAULTS
+			{'I','m','m','o','b','i','l','i','z','e','r',' ','O','n',' ',' ',' ',' '}, // [ 4] MENU_IMMOBILIZER
+			{'T','o','g','g','l','e',' ','D','Y','N','O',' ',' ',' ',' ',' ',' ',' '}, // [ 5] MENU_DYNO
+			{'T','o','g','g','l','e',' ','E','S','C','/','T','C',' ',' ',' ',' ',' '}, // [ 6] MENU_ESC_TC_HIDDEN
+			{'F','r','o','n','t',' ','b','r','a','k','e',' ','N','o','r','m','a','l'}, // [ 7] MENU_FRONT_BRAKE
+			{'4','W','D',' ',' ','e','n','a','b','l','e','d',' ',' ',' ',' ',' ',' '}, // [ 8] MENU_4WD
+			{'M','a','i','n',' ','s','e','t','u','p',' ','m','e','n','u',' ',' ',' '}, // [ 9] MENU_MAIN_SETUP
+			{'P','a','r','a','m','s',' ','s','e','t','u','p',' ','m','e','n','u',' '}, // [10] MENU_PARAMS_SETUP
+			{'E','n','a','b','l','e',' ','H','A','S',' ',' ',' ',' ',' ',' ',' ',' '}, // [11] MENU_HAS
+			{'T','o','g','g','l','e',' ','e','x','h','a','u','s','t',' ',' ',' ',' '}, // [12] MENU_EXHAUST
+			{'S','a','v','e',' ','l','o','g',' ','t','o',' ','f','i','l','e',' ',' '}, // [13] MENU_SAVE_LOG
+			{'R','e','s','e','t',' ','s','t','a','t','i','s','t','i','c','s',' ',' '}, // [14] MENU_RESET_STATISTICS
+			{'M','a','x',' ','h','o','l','d',' ','O','f','f',' ',' ',' ',' ',' ',' '}, // [15] MENU_MAX_HOLD
+            {'F','e','a','t','u','r','e','s',' ','m','e','n','u',' ',' ',' ',' ',' '}, // [16] MENU_FEATURES
+            {'E','x','i','t',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' '}, // [17] MENU_FEATURES_EXIT
 
 	};
 	uint8_t setup_dashboardPageIndex=0;

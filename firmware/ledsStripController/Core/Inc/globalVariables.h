@@ -163,6 +163,33 @@
 
 		//
 
+        /* Stable legacy menu IDs: keep these values for dynamic labels and actions. */
+        typedef enum {
+            MENU_VERSION = 0,
+            MENU_SHOW_PARAMETERS = 1,
+            MENU_READ_FAULTS = 2,
+            MENU_CLEAR_FAULTS = 3,
+            MENU_IMMOBILIZER = 4,
+            MENU_DYNO = 5,
+            MENU_ESC_TC_HIDDEN = 6,
+            MENU_FRONT_BRAKE = 7,
+            MENU_4WD = 8,
+            MENU_MAIN_SETUP = 9,
+            MENU_PARAMS_SETUP = 10,
+            MENU_HAS = 11,
+            MENU_EXHAUST = 12,
+            MENU_SAVE_LOG = 13,
+            MENU_RESET_STATISTICS = 14,
+            MENU_MAX_HOLD = 15,
+            MENU_FEATURES = 16,
+            MENU_FEATURES_EXIT = 17
+        } BaccableMenuId;
+
+        extern const uint8_t baccableMainOrder[];
+        extern const uint8_t baccableFeatureOrder[];
+        extern const uint8_t baccableMainMenuCount;
+        extern const uint8_t baccableFeatureMenuCount;
+
 		extern uint8_t main_dashboardPageIndex;
 		extern uint8_t dashboard_menu_indent_level;
 		extern uint8_t maxHold_enabled;
