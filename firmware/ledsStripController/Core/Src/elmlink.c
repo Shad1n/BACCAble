@@ -76,8 +76,8 @@ static uint32_t elmlink_id_of(const uint8_t *f){
 
 // Sends a block on the line (see uart_link_send in uart.c: it writes to the registers and keeps
 // the reception off while sending, otherwise the interrupt never re-arms).
-static void elmlink_send(const uint8_t *f){
-	uart_link_send(f, UART_BUFFER_SIZE);
+static uint8_t elmlink_send(const uint8_t *f){
+	return uart_link_send(f, UART_BUFFER_SIZE);
 }
 
 // Called from the reception interrupt: it just copies the block.
@@ -353,8 +353,7 @@ uint8_t elmlink_send_request(uint8_t bus, uint32_t canId, uint8_t ext,
 	inbox_clear();			//discards any leftovers of the previous request
 	elmlink_build(f, bus_to_dest(bus), ELMLINK_TYPE_REQ,
 	              ext ? ELMLINK_FLAG_EXTID : 0, canId, data, dlc, seqCounter);
-	elmlink_send(f);
-	return 1;
+	return elmlink_send(f);
 }
 
 uint8_t elmlink_poll(void (*onFrame)(uint32_t id, uint8_t ext, const uint8_t *d, uint8_t dlc)){

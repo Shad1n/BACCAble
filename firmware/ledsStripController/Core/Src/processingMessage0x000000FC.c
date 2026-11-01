@@ -6,12 +6,16 @@
  */
 
 #include "processingMessage0x000000FC.h"
+#include "stageg_ign_diag.h"
 
 void processingMessage0x000000FC(){
 
 	//message to dashboard containing rpm speed and not only
 	#if (defined(C1baccable) || defined(C2baccable))
 		if(rx_msg_header.DLC>=2){
+            #if defined(C1baccable)
+            stageg_ign_diag_note_0fc();
+            #endif
 			currentRpmSpeed=(rx_msg_data[0] *256 + (rx_msg_data[1] & ~0x3) )/4; //extract rpm speed
 			//onboardLed_blue_on();
 			#if defined(C1baccable)
@@ -22,27 +26,28 @@ void processingMessage0x000000FC(){
 	#if defined(C2baccable)
 		if(currentRpmSpeed< 400 ){
 			if(ESCandTCinversion!=0) ESCandTCinversion=0;
-			if(DynoModeEnabled!=0){
-				SNIFFER_DEBUG1(0x2205, currentRpmSpeed); //dyno: engine off, dyno status cleared (no command sent to ABS) //dyno debug 04/10/2026
-				DynoModeEnabled=0;
-				//engine off: tell C1 that Dyno is no longer active. Without this, DynoModeEnabledOnMaster
-				//stays stale (still 1) on C1, so after restart the "ENABLE DYNO" warning on the Front
-				//Brake page is skipped and Front Brake Assist is entered directly instead.
-				uint8_t tmpArrDynoOff[2]={C1BusID,C1cmdDynoNotActive};
-				addToUARTSendQueue(tmpArrDynoOff, 2);
-			}
+			if(DynoModeEnabled!=0) DynoModeEnabled=0;
 			if(front_brake_forced!=0) front_brake_forced=255;
 		}
 		// @netzmark: used by PDC DISABLE code (pdcAutoDisable)
 		// Reverse gear on C2 detection
 		if(rx_msg_header.DLC >= 4) {
-			//bitmask fix 28/08/2026 - was &&, the logical AND: it collapsed the 2 bit field to 0 or 1 and left the
-			//upper bits of the shifted byte unmasked, so any of bits 2..7 being set read as "reverse engaged".
-			reverseGearActive=(rx_msg_data[3]>>2) & 0b00000011; //0=not inserted, 1=rear gear engaged, 2=not used
+			if(rx_msg_data[3] == 0x06) {
+				reverseGearActive = 1; // Reverse gear driving
+				//onboardLed_blue_on();
+			} else {
+				reverseGearActive = 0; // Forward driving or parking post
+				//onboardLed_blue_off();
+			}
 		}
 		// @netzmark - end
 	#endif
 	#if defined(C1baccable)
+        if(rx_msg_header.DLC >= 5u) {
+            /* StopStart status: byte3 bit0 + byte4 bit7 (raw 2-bit value). */
+            uint8_t ss=(uint8_t)((rx_msg_data[3] & 1u) | ((rx_msg_data[4] >> 6) & 2u));
+            stageg_ign_diag_note_stopstart(ss);
+        }
 		if(currentRpmSpeed<400){
 			startAndStopEnabled=1; //if motor off, re-enable start&stop logic
 			requestToDisableStartAndStop=0; //re set request trigger

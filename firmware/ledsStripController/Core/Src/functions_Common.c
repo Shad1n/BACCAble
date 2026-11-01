@@ -7,116 +7,154 @@
 
 #include "functions_Common.h"
 #include "debug.h"
+#include <string.h>	// @netzmark: for strlen
 
-void floatToStr(char* str, float num, uint8_t precision, uint8_t maxLen) {
 
-    uint8_t i = 0;
+/*
+ * @netzmark custom-printf improvement
+ * floatToStr() + appendFloatRightAligned()
+*/
 
-    // Gestione dei casi speciali NaN e Inf
-    if (num != num) {  // NaN check
-        memset(&str[0], ' ', maxLen-1); //pad with spaces
-        str[maxLen - 1] = '\0';
-        return;
-    }
-    if (num == (float)INFINITY) {
-        if (maxLen > 3) {
-            str[0] = 'I'; str[1] = 'n'; str[2] = 'f'; str[3] = '\0';
-        }
-        return;
-    }
-    if (num == (float)-INFINITY) {
-        if (maxLen > 4) {
-            str[0] = '-'; str[1] = 'I'; str[2] = 'n'; str[3] = 'f'; str[4] = '\0';
-        }
-        return;
-    }
+/*
+ * floatToStr()
+ * Converts a floating-point value to a null-terminated ASCII string.
+ *
+ * - Performs manual decimal rounding according to the requested precision
+ * - Suppresses negative zero and very small values (e.g. "-0.00")
+ * - Outputs a fixed number of fractional digits
+ * - Handles sign explicitly and writes into a bounded buffer
+ *
+ * Unlike printf():
+ * - Does not perform automatic field width adjustment
+ * - Does not apply padding or alignment rules internally
+ * - Does not support format flags or scientific notation
+ *
+ * Note:
+ * Field width, padding, and alignment are handled externally
+ * (by appendFloatRightAligned()).
+ */
 
-    // Calcolo del fattore di arrotondamento corretto
-    float roundingFactor = 0.5f;
-    for (uint8_t j = 0; j < precision; j++) {
-        roundingFactor /= 10.0f;
-    }
-    if (num < 0) {
-        num -= roundingFactor;  // Arrotondamento corretto per numeri negativi
+void floatToStr(char* str, float num, uint8_t precision, uint8_t maxLen)
+{
+    if (maxLen == 0) return;
+
+    // Fast lookup for precision 0-3 (max usable for standard float)
+    static const float lsbTable[] = { 1.0f, 0.1f, 0.01f, 0.001f };
+    if (precision > 3) precision = 3; //I assume that never need higher precision
+
+    char* ptr = str;
+    char* end = str + maxLen - 1; // Reserve space for '\0'
+
+    float lsb = lsbTable[precision];
+    float rounding = lsb / 2.0f;
+
+    // --- Sign handling & Zero-clamping ---
+    // Eliminates "-0.0" by checking if value is below displayable threshold
+    if (num < -rounding) {
+        if (ptr < end) *ptr++ = '-';
+        num = -num + rounding;
+    } else if (num < rounding) {
+        num = 0.0f;
     } else {
-        num += roundingFactor;  // Arrotondamento per numeri positivi
+        num += rounding;
     }
 
-    // Gestione del segno
-    if (num < 0) {
-        if (i < maxLen - 1) {
-            str[i++] = '-';
-        }
-        num = -num;
-    }
-
-    // Parte intera e parte decimale
     uint32_t intPart = (uint32_t)num;
-    uint32_t scale = 1;
-    for (uint8_t j = 0; j < precision; j++) {
-        scale *= 10;
-    }
-    uint32_t decPart = (uint32_t)((num - intPart) * scale);
+    float remainder = num - (float)intPart;
 
-    // Conversione della parte intera
-    uint8_t intStart = i;
-    if (intPart == 0) {
-        if (i < maxLen - 1) {
-            str[i++] = '0';
-        }
-    } else {
-        uint8_t count = 0;
-        uint32_t tmp = intPart;
-        while (tmp > 0) {
-            tmp /= 10;
-            count++;
-        }
-        for (uint8_t j = count; j > 0; j--) {
-            if (i < maxLen - 1) {
-                str[i + j - 1] = (intPart % 10) + '0';
-            }
-            intPart /= 10;
-        }
-        i += count;
+    // --- Integer part ---
+    char temp[11];
+    int intLen = 0;
+
+    do {
+        temp[intLen++] = (intPart % 10) + '0';
+        intPart /= 10;
+    } while (intPart && intLen < (int)sizeof(temp));
+
+    while (intLen > 0 && ptr < end) {
+        *ptr++ = temp[--intLen];
     }
 
-    // Conversione della parte decimale
-    if (precision > 0 && i < maxLen - 1) {
-        str[i++] = '.';
-        for (uint8_t j = 0; j < precision; j++) {
-            if (i < maxLen - 1) {
-                decPart *= 10;
-                str[i++] = (decPart / scale) + '0';
-                decPart %= scale;
-            }
+    // --- Fractional part ---
+    if (precision > 0 && ptr < end) {
+        *ptr++ = '.';
+        while (precision-- && ptr < end) {
+            remainder *= 10.0f;
+            int digit = (int)remainder;
+            *ptr++ = (char)(digit + '0');
+            remainder -= (float)digit;
         }
     }
 
-    // Rimuovere zeri finali superflui
-    if (precision > 0) {
-        while (i > intStart && str[i - 1] == '0') {
-            str[--i] = '\0';
-        }
-        if (i > intStart && str[i - 1] == '.') {
-            str[--i] = '\0';
-        }
-    }
-
-    // Aggiungere terminatore di stringa
-    if (i < maxLen) {
-    	memset(&str[i], ' ', maxLen-i-1); //pad with spaces
-        str[maxLen - 1] = '\0'; //if instead we want to close the string without padding, we would just need str[i] = '\0' without memset.
-    } else if (maxLen > 0) {
-        str[maxLen - 1] = '\0';
-    }
+    *ptr = '\0';
 }
 
+
+/*
+ * appendFloatRightAligned()
+ * Appends a float value into a transport buffer as a fixed-length field.
+ * Total field length is predictable, matching the original Gaucho's intent (I guess).
+ * Handles field width, left padding, right alignment, and visual layout.
+ */
+
+void appendFloatRightAligned(char* result,
+                             uint8_t* index,
+                             uint8_t resultMaxLen,
+                             float value,
+                             uint8_t precision,
+                             uint8_t fieldWidth)
+{
+    /* Must always write exactly `fieldWidth` bytes
+       to preserve fixed-length transport frames. */
+
+    if (*index >= resultMaxLen)
+        return;
+
+    /* Invalid float → fill entire field */
+    if (isnan(value) || isinf(value))
+    {
+        for (uint8_t i = 0; i < fieldWidth && *index < resultMaxLen; i++)
+            result[(*index)++] = ' ';   // or '-' if visually preferred
+        return;
+    }
+
+    char buf[16] = {0}; // instead of "char buf[32]
+    floatToStr(buf, value, precision, sizeof(buf));
+    //buf[15] = '\0';// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+    uint8_t len = strlen(buf);
+
+    /* Overflow → mark entire field */
+    if (len > fieldWidth)
+    {
+        for (uint8_t i = 0; i < fieldWidth && *index < resultMaxLen; i++)
+            result[(*index)++] = '#';
+        return;
+    }
+
+    uint8_t pad = fieldWidth - len;
+
+    /* Left padding (right alignment) */
+    for (uint8_t i = 0; i < pad && *index < resultMaxLen; i++)
+        result[(*index)++] = ' ';
+
+    /* Write value */
+    for (uint8_t i = 0; i < len && *index < resultMaxLen; i++)
+        result[(*index)++] = buf[i];
+
+    /* Safety guard: ensure exact fieldWidth bytes written */
+    for (uint8_t written = pad + len;
+         written < fieldWidth && *index < resultMaxLen;
+         written++)
+    {
+        result[(*index)++] = ' ';
+    }
+}
 
 
 uint8_t calculateCRC(uint8_t* data, uint8_t arraySize) {
 	uint8_t crc = 0xFF;
 	if(arraySize>1){
-		//calculate sae_j1850 CRC-8 of the array (excluded last element, that will be used to store the final CRC
+		//calculate sae_j1850 CRC-8 of the array (excluded last element, that will be used to store the final CRC)
 		for (uint8_t i=0;i<arraySize-1;i++){
 			crc ^= data[i];
 			for (int i = 0; i < 8; ++i){
@@ -130,6 +168,13 @@ uint8_t calculateCRC(uint8_t* data, uint8_t arraySize) {
 
 
 //System Clock Configuration
+
+/* HSI/HSE configuration added by @netzmark - BEGINING */
+
+#if !defined(HSE_ENABLED_FOR_UCAN)
+// System Clock Configuration for HSI (Gaucho's ori code)
+// It means this is Baccable/Canable standard clock configuration
+
 void SystemClock_Config(void){
   HAL_Init();
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
@@ -146,18 +191,16 @@ void SystemClock_Config(void){
   }
 
   // configure CRS to stabilize HSI48
-  //__HAL_RCC_CRS_CLK_ENABLE();
-  //
-  //RCC_CRSInitTypeDef crs = {0};
-  //crs.Prescaler = RCC_CRS_SYNC_DIV1;
-  //crs.Source = RCC_CRS_SYNC_SOURCE_USB;
-  //crs.Polarity = RCC_CRS_SYNC_POLARITY_RISING;
-  //crs.ReloadValue = __HAL_RCC_CRS_RELOADVALUE_CALCULATE(48000000, 1000);
-  //crs.ErrorLimitValue = RCC_CRS_ERRORLIMIT_DEFAULT;
-  //crs.HSI48CalibrationValue = 0x20;
-  //HAL_RCCEx_CRSConfig(&crs);
+  __HAL_RCC_CRS_CLK_ENABLE();
 
-
+  RCC_CRSInitTypeDef crs = {0};
+  crs.Prescaler = RCC_CRS_SYNC_DIV1;
+  crs.Source = RCC_CRS_SYNC_SOURCE_USB;
+  crs.Polarity = RCC_CRS_SYNC_POLARITY_RISING;
+  crs.ReloadValue = __HAL_RCC_CRS_RELOADVALUE_CALCULATE(48000000, 1000);
+  crs.ErrorLimitValue = RCC_CRS_ERRORLIMIT_DEFAULT;
+  crs.HSI48CalibrationValue = 0x20;
+  HAL_RCCEx_CRSConfig(&crs);
 
   /** Initializes the CPU, AHB and APB buses clocks
   */
@@ -184,7 +227,59 @@ void SystemClock_Config(void){
   __HAL_RCC_GPIOA_CLK_ENABLE();
 
 }
+#endif
 
+#if defined(HSE_ENABLED_FOR_UCAN)
+// Configuration the boards for HSE (external oscillator) using - BEGIN ; by @netzmark
+
+void SystemClock_Config(void) {
+  HAL_Init();
+  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
+
+  /** 1. HSE oscillator and PLL loop configuration
+  * HSI48 disabled, HSE (8MHz) enabled
+  * PLL: 8MHz * 6 = 48MHz
+  */
+
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;             // External oscillator ON
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE; // external oscillator is set as the source for PLL
+  RCC_OscInitStruct.PLL.PREDIV = RCC_PREDIV_DIV1;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL6;         // Multiplication x6 for dla 8MHz external oscillator (8*6=48)
+
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
+    Error_Handler(2000);
+  }
+
+  /** 2. Bus clock initialisation (SYSCLK = 48MHz z PLL)
+  */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK; // System starts with PLL
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK) {
+    Error_Handler(1500);
+  }
+
+  /** 3. Setting clock source for USB device
+  * Changed from HSI48 onto signal from PLL
+  */
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USB;
+  PeriphClkInit.UsbClockSelection = RCC_USBCLKSOURCE_PLLCLK; // USB gets stable clock from PLL(HSE)
+
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK) {
+    Error_Handler(1000);
+  }
+   //__HAL_FLASH_PREFETCH_BUFFER_ENABLE(); // it seems to be not necessary as it is applied by HAL_init().
+   __HAL_RCC_GPIOA_CLK_ENABLE();
+}
+#endif
+//System Clock Configuration for HSE/HSI - END ; by @netzmark
 
 void Error_Handler(uint16_t halfPeriod){
 	//onboardLed_red_on();
@@ -243,87 +338,76 @@ void system_hex32(char *out, uint32_t val){
 	}
 }
 
+/* USB MSC files reside in C2/BH local Flash, not in C1 settings Flash.
+ * Update only when content differs. Never format on mount failure.
+ * disk_write rejects any page touching the reserved persistent-data region. */
+#ifdef ENABLE_USB_MASS_STORAGE
+static void usb_storage_sync_text(const char *name, const char *expected) {
+    FIL file;
+    FRESULT result;
+    UINT read_count = 0, written = 0;
+    char current[48];
+    size_t expected_len = strlen(expected);
+    if (expected_len >= sizeof(current)) return;
+    result = f_open(&file, name, FA_READ);
+    if (result == FR_OK) {
+        FSIZE_t old_size = f_size(&file);
+        if (old_size == expected_len) {
+            result = f_read(&file, current, sizeof(current), &read_count);
+            f_close(&file);
+            if (result == FR_OK && read_count == expected_len &&
+                memcmp(current, expected, expected_len) == 0) return;
+        } else {
+            f_close(&file);
+        }
+    } else if (result != FR_NO_FILE) {
+        return;
+    }
+    result = f_open(&file, name, FA_CREATE_ALWAYS | FA_WRITE);
+    if (result != FR_OK) return;
+    result = f_write(&file, expected, expected_len, &written);
+    f_close(&file);
+    (void)result;
+    (void)written;
+}
+#endif
+
 void saveToFilesystem(void){
-	#ifdef ENABLE_USB_MASS_STORAGE
-
-		FIL fil;
-		UINT bw;
-		FRESULT res;
-
-		res = f_mount(&fs, "", 1);
-		if (res == FR_OK){
-			res = f_open(&fil, "hello.txt", FA_WRITE|FA_OPEN_ALWAYS);
-			if (res == FR_OK) {
-				f_write(&fil, "Hello, World!\r\n", 15, &bw);
-				f_sync(&fil);
-				f_close(&fil);
-				onboardLed_blue_on();
-			}
-
-
-		}
-		f_unmount("");
-
-	#endif
+#ifdef ENABLE_USB_MASS_STORAGE
+    /* Legacy UART command: idempotent, no additional log files. */
+    if (f_mount(&fs, "", 1) == FR_OK) {
+        usb_storage_sync_text("HELLO.TXT", "Hello World!");
+    }
+    f_unmount("");
+#endif
 }
 
-
 void storage_init(void){
-
-	#ifdef ENABLE_USB_MASS_STORAGE
-		//FATFS fs;
-		FIL fil;
-		UINT bw;
-		FRESULT res;
-		BYTE work[FF_MIN_SS];
-
-		res = f_mount(&fs, "", 1);
-		if (res != FR_OK){
-			//onboardLed_blue_on();
-			MKFS_PARM opt = {.fmt = FM_FAT | FM_SFD, .n_fat = 1, .align = 0, .n_root = 32, .au_size = FF_MIN_SS};
-			res = f_mkfs("", &opt, work, FF_MIN_SS);
-			if (res == FR_OK){
-				res = f_setlabel("BACCABLE "
-					#ifdef ACT_AS_CANABLE
-						"Sniffer"
-					#elif defined(C1baccable)
-						"C1"
-					#elif defined(C2baccable)
-						"C2"
-					#elif defined(BHbaccable)
-						"BH"
-					#endif
-				);
-				res = f_open(&fil, "Version.txt", FA_CREATE_ALWAYS | FA_WRITE);
-
-				if (res == FR_OK){
-					onboardLed_blue_on();
-
-					f_write(&fil, _FW_VERSION, strlen(_FW_VERSION), &bw);
-					f_close(&fil);
-				}else{
-					onboardLed_red_on();
-				}
-			}
-
-		}
-
-		res = f_unmount("");
-
-	#endif
+#ifdef ENABLE_USB_MASS_STORAGE
+    /* Preserve the existing volume and its C2/BH label. Never auto-format. */
+    if (f_mount(&fs, "", 1) == FR_OK) {
+        usb_storage_sync_text("VERSION.TXT", _FW_VERSION);
+        usb_storage_sync_text("HELLO.TXT", "Hello World!");
+        /* One-time migration: remove obsolete file from the local C2/BH FAT volume.
+         * FR_NO_FILE is normal on subsequent boots. No format or retry loop.
+         * disk_write protects reserved Flash pages; deletion failure is nonfatal. */
+        (void)f_unlink("BACCABLE.TXT");
+    }
+    f_unmount("");
+#endif
 }
 
 //sniffer function 24/08/2026 - BEGIN
 #if defined(C1baccable) || defined(C2baccable) || defined(BHbaccable)
-//Writes one 16 byte frame into the ring buffer: the part shared by received, transmitted and debug frames.
-//Called from the main loop only, never from an interrupt, and must stay short.
+//Writes one 16 byte frame into the ring buffer. Called from the can rx path, must stay short.
 //SNIFFER_BUFFER_SIZE is a multiple of SNIFFER_FRAME_SIZE and snifferRingHead only ever advances
 //by whole frames, so it stays frame aligned: a single frame never wraps past the end of the
 //array, and the wrap mask only needs to be applied once, after the whole frame has been written.
-//sniffer tx/debug 27/09/2026 - was the body of snifferPushFrame(), now shared: the bytes written for a received frame are unchanged
-static void snifferPushRaw(uint8_t snifferFirstByte, uint32_t snifferWord, uint8_t *snifferPayload, uint8_t snifferPayloadLength){
+void snifferPushFrame(CAN_RxHeaderTypeDef *snifferRxHeader, uint8_t *snifferRxData){
 	uint16_t snifferBase;
 	uint32_t snifferTimeStamp;
+	uint32_t snifferCanId;
+	uint8_t  snifferDlc;
 	uint8_t  snifferByteIndex;
 
 	//as soon as there is room for the marker plus one more frame, report the frames lost during the overflow
@@ -352,93 +436,52 @@ static void snifferPushRaw(uint8_t snifferFirstByte, uint32_t snifferWord, uint8
 		return;
 	}
 
+	snifferDlc=snifferRxHeader->DLC;
+	if(snifferDlc>8) snifferDlc=8;
+	if(snifferRxHeader->IDE==CAN_ID_EXT){
+		snifferCanId=snifferRxHeader->ExtId;
+	}else{
+		snifferCanId=snifferRxHeader->StdId;
+	}
 	snifferTimeStamp=currentTime;
 	snifferBase=snifferRingHead;
 
-	snifferRingBuffer[snifferBase+0]=snifferFirstByte;
+	snifferRingBuffer[snifferBase+0]=SNIFFER_START_NIBBLE|snifferDlc;
 	snifferRingBuffer[snifferBase+1]=(uint8_t)(snifferTimeStamp);
 	snifferRingBuffer[snifferBase+2]=(uint8_t)(snifferTimeStamp>>8);
 	snifferRingBuffer[snifferBase+3]=(uint8_t)(snifferTimeStamp>>16);
-	snifferRingBuffer[snifferBase+4]=(uint8_t)(snifferWord);
-	snifferRingBuffer[snifferBase+5]=(uint8_t)(snifferWord>>8);
-	snifferRingBuffer[snifferBase+6]=(uint8_t)(snifferWord>>16);
-	snifferRingBuffer[snifferBase+7]=(uint8_t)(snifferWord>>24);
+	snifferRingBuffer[snifferBase+4]=(uint8_t)(snifferCanId);
+	snifferRingBuffer[snifferBase+5]=(uint8_t)(snifferCanId>>8);
+	snifferRingBuffer[snifferBase+6]=(uint8_t)(snifferCanId>>16);
+	snifferRingBuffer[snifferBase+7]=(uint8_t)(snifferCanId>>24);
 	for(snifferByteIndex=0; snifferByteIndex<8; snifferByteIndex++){
-		snifferRingBuffer[snifferBase+8+snifferByteIndex]=(snifferByteIndex<snifferPayloadLength)?snifferPayload[snifferByteIndex]:0; //zero padding above DLC
+		snifferRingBuffer[snifferBase+8+snifferByteIndex]=(snifferByteIndex<snifferDlc)?snifferRxData[snifferByteIndex]:0; //zero padding above DLC
 	}
 	snifferRingHead=(snifferBase+SNIFFER_FRAME_SIZE)&SNIFFER_BUFFER_MASK;
 	snifferRingCount+=SNIFFER_FRAME_SIZE;
 }
 
-//Frame received from the bus: first byte 0xA0|DLC. Called from the can rx path.
-void snifferPushFrame(CAN_RxHeaderTypeDef *snifferRxHeader, uint8_t *snifferRxData){
-	uint8_t snifferDlc=snifferRxHeader->DLC;
-	if(snifferDlc>8) snifferDlc=8;
-	snifferPushRaw(SNIFFER_START_NIBBLE|snifferDlc, (snifferRxHeader->IDE==CAN_ID_EXT)?snifferRxHeader->ExtId:snifferRxHeader->StdId, snifferRxData, snifferDlc);
-}
-
-//sniffer tx/debug 27/09/2026 - frame sent on the bus by baccable: first byte 0xB0|DLC, same layout as a received frame.
-//Called by can_process() right after the frame has been handed to a tx mailbox, so the timestamp is the real
-//transmission time and a frame dropped by a full tx queue never shows up as sent.
-void snifferPushTxFrame(CAN_TxHeaderTypeDef *snifferTxHeader, uint8_t *snifferTxData){
-	uint8_t snifferDlc=snifferTxHeader->DLC;
-	if(snifferDlc>8) snifferDlc=8;
-	snifferPushRaw(SNIFFER_TX_NIBBLE|snifferDlc, (snifferTxHeader->IDE==CAN_ID_EXT)?snifferTxHeader->ExtId:snifferTxHeader->StdId, snifferTxData, snifferDlc);
-}
-
-//sniffer tx/debug 27/09/2026 - debug frame, baccable internal elaboration: first byte 0xC0|number of valid values,
-//byte 4..5 the code point id, byte 8..11 and 12..15 the two values. Use it through the SNIFFER_DEBUG macros only.
-void snifferPushDebug(uint16_t snifferPointId, uint8_t snifferValuesCount, uint32_t snifferValue1, uint32_t snifferValue2){
-	uint8_t snifferValues[8];
-	snifferValues[0]=(uint8_t)(snifferValue1);
-	snifferValues[1]=(uint8_t)(snifferValue1>>8);
-	snifferValues[2]=(uint8_t)(snifferValue1>>16);
-	snifferValues[3]=(uint8_t)(snifferValue1>>24);
-	snifferValues[4]=(uint8_t)(snifferValue2);
-	snifferValues[5]=(uint8_t)(snifferValue2>>8);
-	snifferValues[6]=(uint8_t)(snifferValue2>>16);
-	snifferValues[7]=(uint8_t)(snifferValue2>>24);
-	snifferPushRaw(SNIFFER_DEBUG_NIBBLE|(snifferValuesCount&0x0F), snifferPointId, snifferValues, 8);
-}
-
 //Moves buffered bytes to usb. Never waits on the usb: if the endpoint is busy we retry on the next loop.
-//sniffer tx/debug 04/10/2026 - throughput fix: one 64 byte packet per main loop iteration (the old
-//CDC_Transmit_FS path, bounded by its 64 byte linear buffer) caps the stream at 4 frames per loop, far
-//below what a busy bus delivers, and the ring then overflows (0xAF markers on the host). The usb device
-//library splits a long IN transfer into 64 byte packets by itself inside the endpoint interrupt, so the
-//ring is now handed to the endpoint directly, up to SNIFFER_USB_CHUNK contiguous bytes per transfer and
-//with no copy at all. The bytes in flight stay in the ring (still counted in snifferRingCount, so
-//snifferPushRaw can never overwrite them) and are released only once the endpoint reports the transfer
-//complete, on the next call.
 void snifferFlush(void){
 	uint16_t snifferSendLength;
 	uint16_t snifferContiguousBytes;
-	USBD_CDC_HandleTypeDef *snifferCdc;
 
 	if(snifferUsbInited==0) return;
-	if(hUsbDeviceFS.pClassData==NULL) return; //usb not enumerated yet
-	snifferCdc=(USBD_CDC_HandleTypeDef*)hUsbDeviceFS.pClassData;
-	if(snifferCdc->TxState) return; //transfer still in flight: nothing to do yet
-
-	//the previous transfer is complete: release its bytes from the ring
-	if(snifferInflightBytes){
-		snifferRingTail=(snifferRingTail+snifferInflightBytes)&SNIFFER_BUFFER_MASK;
-		snifferRingCount-=snifferInflightBytes;
-		snifferInflightBytes=0;
-	}
 	if(snifferRingCount==0) return;
+	if(hUsbDeviceFS.pClassData==NULL) return; //usb not enumerated yet
+	if(((USBD_CDC_HandleTypeDef*)hUsbDeviceFS.pClassData)->TxState) return; //endpoint busy: do not enter the busy wait inside CDC_Transmit_FS
 
 	snifferSendLength=snifferRingCount;
 	//a partial buffer is sent only after a while, so that on a busy bus we always send full 64 byte packets
-	if(snifferSendLength<SNIFFER_USB_PACKET && (currentTime-snifferLastFlushTime)<SNIFFER_FLUSH_TIMEOUT_MS) return;
+	if(snifferSendLength<SNIFFER_USB_CHUNK && (currentTime-snifferLastFlushTime)<SNIFFER_FLUSH_TIMEOUT_MS) return;
 	if(snifferSendLength>SNIFFER_USB_CHUNK) snifferSendLength=SNIFFER_USB_CHUNK;
 	//never read across the end of the ring: the remaining part goes out on the next flush
 	snifferContiguousBytes=SNIFFER_BUFFER_SIZE-snifferRingTail;
 	if(snifferSendLength>snifferContiguousBytes) snifferSendLength=snifferContiguousBytes;
 
-	USBD_CDC_SetTxBuffer(&hUsbDeviceFS, &snifferRingBuffer[snifferRingTail], snifferSendLength);
-	if(USBD_CDC_TransmitPacket(&hUsbDeviceFS)==USBD_OK){
-		snifferInflightBytes=snifferSendLength;
+	if(CDC_Transmit_FS(&snifferRingBuffer[snifferRingTail], snifferSendLength)==USBD_OK){
+		snifferRingTail=(snifferRingTail+snifferSendLength)&SNIFFER_BUFFER_MASK;
+		snifferRingCount-=snifferSendLength;
 		snifferLastFlushTime=currentTime;
 	}
 }
@@ -449,7 +492,6 @@ void snifferStart(void){
 	snifferRingHead=0;
 	snifferRingTail=0;
 	snifferRingCount=0;
-	snifferInflightBytes=0; //sniffer tx/debug 04/10/2026 - the usb is restarted below, nothing can still be in flight
 	snifferDroppedFrames=0;
 	snifferLastFlushTime=currentTime;
 	snifferUsbStartRequested=1;

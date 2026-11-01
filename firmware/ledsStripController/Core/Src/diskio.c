@@ -104,6 +104,14 @@ DRESULT disk_write(
 {
     HAL_StatusTypeDef ret = HAL_OK;
 
+    /* Never erase or program C2/BH reserved persistent-data pages.
+     * Entire 2-KiB Flash pages are erased by this driver. */
+    if (count == 0 || sector >= 128u || count > (128u - sector)) return RES_PARERR;
+    for (UINT i = 0; i < count; ++i) {
+        uint32_t address = find_page_start(sector + i);
+        if (address < USB_FLASH_START_ADDRESS || address >= 0x0801E800u)
+            return RES_WRPRT;
+    }
     // build operations
     FlashPage *fp = NULL;
     FlashPage *fp_head = NULL;

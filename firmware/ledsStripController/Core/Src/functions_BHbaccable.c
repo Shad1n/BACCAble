@@ -9,6 +9,13 @@
 
 #if defined(BHbaccable)
 
+	// Stage D4: conservative, reversible display pacing experiment.
+	// Retain atomic page snapshots and the existing frame sequence.
+	#define BH_DASHBOARD_FRAME_INTERVAL_MS 40u
+
+	// Stable source for a complete multi-frame dashboard transmission.
+	static uint8_t dashboardTxSnapshot[DASHBOARD_MESSAGE_MAX_LENGTH];
+
 	void BHbaccableInitCheck(){
 		//let's open the can bus because we may need data
 		can_set_bitrate(CAN_BITRATE_125K);//set can speed to 125kpbs
@@ -36,6 +43,7 @@
 		rightMirrorVerticalOperativePos =(uint8_t)readFromFlashBH(9);
 
 	}
+
 
 	//DNA memory 18/10/2026 - BEGIN
 	//C1 asks a drive style (BHcmdDnaMemoryRestore) at the first engine start after the car slept. The DNA selector
@@ -77,17 +85,38 @@
 		}
 		dnaRestoreSkipNext=0;
 		dnaRestoreLongStart=0;
-		SNIFFER_DEBUG2(0x2700, ((uint32_t)dnaRestorePass<<16)|((uint32_t)cur<<8)|dnaRestoreTarget, ((uint32_t)dnaRestoreDir<<16)|((uint32_t)dnaRestoreShortLeft<<8)|dnaRestoreLong); //DNA memory: sequence worked out. v1=byte2 pass, byte1 current position, byte0 wanted (0 A, 1 N, 2 D, 3 R), v2=byte2 direction (0x40 up, 0x20 down), byte1 short presses, byte0 1 if long press D->R
 		return 1;
 	}
 
 	static void dnaRestoreStop(uint8_t reason){
-		SNIFFER_DEBUG2(0x2703, reason, ((uint32_t)dnaRestoreState<<8)|dnaRestorePass); //DNA memory: stopped. v1=reason (1 not started: no fresh 0x46C/0x256 or engine off, 2 nothing to do, 3 user moved the selector, 4 engine stopped, 5 done: wanted style reached, 6 done: second sequence sent), v2=byte1 state, byte0 pass
 		dnaRestoreState=0;
+	}
+	/* Remember manual selector activity after this engine-start edge. This closes
+	 * the race where the driver changes DNA after C1's evaluation but before the
+	 * UART request reaches BH. A manual choice blocks the whole ignition-cycle
+	 * restore. A press made while stopped is retained through the next engine start. */
+	static uint8_t dnaRestoreEngineWasRunning;
+	static uint8_t dnaRestoreManualInputAfterStart;
+	static uint8_t dnaRestoreManualPressActive;
+	static void dnaRestoreTrackEngine(void){
+		if(currentRpmSpeed<=DNA_RESTORE_ENGINE_RUNNING_RPM){
+			if(dnaRestoreEngineWasRunning) dnaRestoreManualInputAfterStart=0u;
+			dnaRestoreEngineWasRunning=0u;
+		}else if(!dnaRestoreEngineWasRunning){
+			dnaRestoreEngineWasRunning=1u;
+		}
 	}
 
 	//called on every 0x256 received (main loop): sends the presses right after the frame of the selector
 	void dnaRestoreOn256(void){
+		dnaRestoreTrackEngine();
+		if(!(rx_msg_data[0] & 0x60u)) dnaRestoreManualPressActive=0u;
+		else if(!dnaRestoreManualPressActive){
+			dnaRestoreManualPressActive=1u;
+			dnaRestoreManualInputAfterStart=1u;
+			uint8_t notice[2]={C1_Bh_BusID,C1BHcmdDnaManualSelection};
+			(void)tryAddToUARTSendQueue(notice,2u);
+		}
 		if(dnaRestoreState!=1) return;
 		if(rx_msg_data[0] & 0x60){ dnaRestoreStop(3); return; } //a real press of the user (our own frames are never received)
 		if(currentRpmSpeed<=DNA_RESTORE_ENGINE_RUNNING_RPM){ dnaRestoreStop(4); return; }
@@ -109,7 +138,6 @@
 			d[0]=(uint8_t)((d[0] & ~0x60) | press);
 			can_tx((CAN_TxHeaderTypeDef *)&rx_msg_header, d); //the frame of the selector again, pressed
 			//can_process(); //sent as soon as possible after the original
-			SNIFFER_DEBUG2(0x2701, press, ((uint32_t)dnaRestoreShortLeft<<8)|dnaRestoreLong); //DNA memory: press sent. v1=byte 0 sent (0x40 up, 0x20 down), v2=byte1 short presses left, byte0 1 if long press pending/running
 		}
 		if(dnaRestoreShortLeft==0 && !dnaRestoreLong && !dnaRestoreSkipNext){ //sequence complete (after a short press: when its release went through)
 			dnaRestoreState=2;
@@ -123,6 +151,7 @@
 	//dnaRestoreState: 0=idle, nothing is sent | 1=sequence running (dnaRestoreOn256 sends the presses) |
 	//                 2=sequence over, waiting DNA_RESTORE_CHECK_DELAY_MS before checking the drive style
 	static void dnaRestoreProcess(void){
+		dnaRestoreTrackEngine();
 		//--- 1) a new request arrived from C1 (stored by the uart interrupt as a letter: 'A','N','D' or 'R')
 		if(dnaRestoreRequest){ //new request from C1
 			char letter=(char)dnaRestoreRequest;
@@ -139,6 +168,8 @@
 			if(currentRpmSpeed<=DNA_RESTORE_ENGINE_RUNNING_RPM || dnaRestoreLast46CTime==0 || dnaRestoreLast256Time==0 ||
 			   currentTime-dnaRestoreLast46CTime>DNA_RESTORE_INPUT_MAX_AGE_MS || currentTime-dnaRestoreLast256Time>DNA_RESTORE_INPUT_MAX_AGE_MS){
 				dnaRestoreStop(1); //selector not on this bus, style unknown or engine off: nothing is sent
+			}else if(dnaRestoreManualInputAfterStart){
+				dnaRestoreStop(3); //a manual selector press after engine start has priority for this ignition cycle
 			}else if(dnaRestorePlan()){ //works out direction, number of short presses and the final long press (D->R)
 				dnaRestoreState=1; //from now on dnaRestoreOn256() sends the presses
 			}else{
@@ -168,25 +199,87 @@
 	}
 	//DNA memory 18/10/2026 - END
 
+	// HU text refresh on long-OK exit. Skip when HU is already muted to avoid audible unmute.
+	// 0=idle, 1=wait for first toggle feedback, 2=wait for restored state,
+	// 3=wait for display clear. Never retry a toggle without fresh feedback.
+	static uint8_t huRestorePhase = 0;
+	static uint8_t huRestoreInitialMuted = 0;
+	static uint32_t huRestoreSentAt = 0;
+	static uint32_t huRestoreRequestAt = 0;
+	static void huRestoreToggle(void) {
+		memcpy(centerConsoleTxMsgData, (uint8_t*)centerConsoleRxMsgData, 6);
+		centerConsoleTxMsgData[2] = 0xE0;
+		can_tx(&centerConsoleTxMsgHeader, centerConsoleTxMsgData);
+		huRestoreSentAt = currentTime;
+	}
+	static void huRestoreProcess(void) {
+		if (bhHuTextRestoreRequest) {
+			bhHuTextRestoreRequest = 0;
+			if (huRestorePhase == 0 && audioSystemMuted == 0 && currentGear != 0x0E &&
+			    audioSystemReverseMuted == 0 && audioSystemMuteFeedbackTime != 0 &&
+			    (uint32_t)(currentTime - audioSystemMuteFeedbackTime) < 1500u) {
+				huRestoreInitialMuted = audioSystemMuted;
+				huRestoreRequestAt = currentTime;
+				huRestorePhase = 3;
+			}
+		}
+		if (huRestorePhase == 0) return;
+		// No audio toggle while reversing or under reverse-mute control.
+		if (currentGear == 0x0E || audioSystemReverseMuted != 0) {
+			huRestorePhase = 0;
+			return;
+		}
+		if (huRestorePhase == 3) {
+			if ((uint32_t)(currentTime - huRestoreRequestAt) >= 400u &&
+			    audioSystemMuted == huRestoreInitialMuted &&
+			    (uint32_t)(currentTime - audioSystemMuteFeedbackTime) < 1500u) {
+				huRestoreToggle();
+				huRestorePhase = 1;
+			} else if ((uint32_t)(currentTime - huRestoreRequestAt) > 2000u) {
+				huRestorePhase = 0;
+			}
+			return;
+		}
+		if ((uint32_t)(currentTime - huRestoreSentAt) > 1500u) {
+			// Stop rather than send an unconfirmed toggle. The original audio
+			// state cannot be guaranteed if a HU command/feedback was lost.
+			huRestorePhase = 0;
+			return;
+		}
+		if ((uint32_t)(currentTime - huRestoreSentAt) < 120u ||
+		    audioSystemMuteFeedbackTime <= huRestoreSentAt) return;
+		if (huRestorePhase == 1 && audioSystemMuted != huRestoreInitialMuted) {
+			huRestoreToggle();
+			huRestorePhase = 2;
+		} else if (huRestorePhase == 2 && audioSystemMuted == huRestoreInitialMuted) {
+			huRestorePhase = 0;
+		}
+	}
+
 	void BHperiodicCheck(){
-		dnaRestoreProcess(); //DNA memory 18/10/2026
+		huRestoreProcess();
+		dnaRestoreProcess();
 		if(requestToSendOneFrame>0){ //if requested by a message received from master baccable
-			//send one msg to write something on the dashboard each 50msec (one frame each 300msec)
-			if (currentTime-lastSentTelematic_display_info_msg_Time>50){
+			// Send one display frame at a time; Stage D4 tests a 40 ms interval.
+			if (currentTime-lastSentTelematic_display_info_msg_Time>BH_DASHBOARD_FRAME_INTERVAL_MS){
 				lastSentTelematic_display_info_msg_Time=currentTime;
+				// Capture only at the first frame; never mix two menu pages.
+				if (paramsStringCharIndex == 0) {
+					memcpy(dashboardTxSnapshot, dashboardPageStringArray, DASHBOARD_MESSAGE_MAX_LENGTH);
+				}
 				//prepare msg to send:
 				//frame number is on byte 0 from bit 2 to 0 and byte1 from bit7 to 6
 				telematic_display_info_msg_data[0]=(telematic_display_info_msg_data[0] & ~0x07) | ((telematic_display_info_field_frameNumber>>2) & 0x07);
 				telematic_display_info_msg_data[1]=(telematic_display_info_msg_data[1] & ~0xC0) | ((telematic_display_info_field_frameNumber<<6) & 0xC0);
 
 				//UTF text 1 is on byte 2 and byte 3
-				telematic_display_info_msg_data[3]=dashboardPageStringArray[paramsStringCharIndex];
+				telematic_display_info_msg_data[3]=dashboardTxSnapshot[paramsStringCharIndex];
 				paramsStringCharIndex++; //prepare to send next char
 				//UTF text 2 is on byte 4 (set to zero ) and byte 5
-				telematic_display_info_msg_data[5]=dashboardPageStringArray[paramsStringCharIndex];
+				telematic_display_info_msg_data[5]=dashboardTxSnapshot[paramsStringCharIndex];
 				paramsStringCharIndex++; //prepare to send next char
 				//UTF text 3 is on byte 6 (set to zero) and byte 7
-				telematic_display_info_msg_data[7]=dashboardPageStringArray[paramsStringCharIndex];
+				telematic_display_info_msg_data[7]=dashboardTxSnapshot[paramsStringCharIndex];
 				paramsStringCharIndex++; //prepare to send next char
 				//send it
 				can_tx(&telematic_display_info_msg_header, telematic_display_info_msg_data); //transmit the packet
@@ -201,87 +294,112 @@
 			}
 		}
 
+		//--- @Gaucho original code replaced with @netzmark code below
+//		if(function_park_mirror){ //if function parkmirror is enabled
+//
+//			if(currentGear==0x0E){ //if reverse gear is selected
+//				if(!restoreOperativeMirrorsPosition){ //if we are not returning to operative position
+//					switch(turnIndicator){
+//						case 0x02: //left arrow inserted
+//							if(!leftParkMirrorPositionRequired && !rightParkMirrorPositionRequired) storeOperativeMirrorPosition=1;//store current mirror position, if mirror was not previously lowered
+//							leftParkMirrorPositionRequired=1; //Enable sending command to move mirror
+//							break;
+//						case 0x01: //right arrow inserted
+//							if(!leftParkMirrorPositionRequired && !rightParkMirrorPositionRequired) storeOperativeMirrorPosition=1;//store current mirror position, if mirror was not previously lowered
+//							rightParkMirrorPositionRequired=1; //Enable sending command to move mirror
+//							break;
+//						default:
+//					}
+//				}
+//			}else{
+//				if(leftParkMirrorPositionRequired || rightParkMirrorPositionRequired){ //if mirrors are potentially not in operative position,
+//					restoreOperativeMirrorsPosition=1; //request to restore mirrors to their original position
+//					restoreOperativeMirrorsPositionRequestTime=currentTime;
+//				}
+//				leftParkMirrorPositionRequired=0; //stop sending message to set Park position for mirrors
+//				rightParkMirrorPositionRequired=0;//stop sending message to set Park position for mirrors
+//			}
+//
+//
+//			//Prepare msg to send: set Operative position of the mirrors
+//			parkMirrorMsgData[0]= leftMirrorHorizontalOperativePos;
+//			parkMirrorMsgData[1]= leftMirrorVerticalOperativePos;
+//			parkMirrorMsgData[2]= rightMirrorHorizontalOperativePos;
+//			parkMirrorMsgData[3]= rightMirrorVerticalOperativePos;
+//
+//			//Prepare msg to send: if required, set park position of the mirrors
+//			if(leftParkMirrorPositionRequired){
+//				parkMirrorMsgData[0]= leftParkMirrorHorizontalPos;
+//				parkMirrorMsgData[1]= leftParkMirrorVerticalPos;
+//			}
+//			if(rightParkMirrorPositionRequired){
+//				parkMirrorMsgData[2]= rightParkMirrorHorizontalPos;
+//				parkMirrorMsgData[3]= rightParkMirrorVerticalPos;
+//			}
+//
+//
+//			if(leftParkMirrorPositionRequired || rightParkMirrorPositionRequired || restoreOperativeMirrorsPosition){ //if required
+//				if(!storeOperativeMirrorPosition){ //if operative position was stored
+//					if(currentTime-lastParkMirrorMsgTime>900){ //each 1000msec send a packet
+//						can_tx(&parkMirrorMsgHeader, parkMirrorMsgData); //send msg
+//						lastParkMirrorMsgTime=currentTime;
+//					}
+//				}
+//				if(restoreOperativeMirrorsPosition){
+//					if(currentTime-restoreOperativeMirrorsPositionRequestTime>15000){ //after 15 seconds
+//						restoreOperativeMirrorsPosition=0;
+//					}
+//				}
+//			}
+//		}
+
+		//--- @netzmark park mirror returning delay added - begin//
 		if(function_park_mirror){ //if function parkmirror is enabled
 
-			if(currentGear==0x0E){ //if reverse gear is selected
+			if(currentGear==0x0E){ //if reverse gear is selected 0x0E (masked 7E in fact)
 				exitReverseTime = 0; //Reset hysteresis timer while in Reverse
-				neutralGearEntryTime = 0; //we are not in Neutral
 
-				switch(turnIndicator){
-					case 0x02: //left arrow inserted
-						//if left and right mirror were not requested to move
-						if(!leftParkMirrorPositionRequired && !rightParkMirrorPositionRequired){
-							//if we are returning to operative position
-							if(restoreOperativeMirrorsPosition){
-								//forget it
-								restoreOperativeMirrorsPosition=0;
-							}else{
-								//store current mirror position, because mirror was not previously lowered
-								storeOperativeMirrorPosition=1;
-							}
-						}
-						if(!leftParkMirrorPositionRequired){
+				if(!restoreOperativeMirrorsPosition){ //if we are not returning to operative position
+					switch(turnIndicator){
+						case 0x02: //left arrow inserted
+							if(!leftParkMirrorPositionRequired && !rightParkMirrorPositionRequired) storeOperativeMirrorPosition=1;//store current mirror position, if mirror was not previously lowered
 							leftParkMirrorPositionRequired=1; //Enable sending command to move mirror
-							leftParkMirrorPositionRequiredRequestTime=currentTime;
-						}
-						break;
-					case 0x01: //right arrow inserted
-						//if left and right mirror were not requested to move
-						if(!leftParkMirrorPositionRequired && !rightParkMirrorPositionRequired){
-							//if we are returning to operative position
-							if(restoreOperativeMirrorsPosition){
-								//forget it
-								restoreOperativeMirrorsPosition=0;
-							}else{
-								//store current mirror position, because mirror was not previously lowered
-								storeOperativeMirrorPosition=1;
-							}
-						}
-						if(!rightParkMirrorPositionRequired){
-						rightParkMirrorPositionRequired=1; //Enable sending command to move mirror
-							rightParkMirrorPositionRequiredRequestTime=currentTime;
-						}
-						break;
-					default:
-				}
-
-			}else if(currentGear==0x00){ //Neutral
-				if(neutralGearEntryTime==0) neutralGearEntryTime=currentTime; //remember when Neutral began
-
-				//A brief pass through Neutral (a gear shift crossing N: R->D, D->N->D, ...) holds the
-				//exit-reverse countdown at zero, exactly like Reverse does, so the shift transient never
-				//starts nor restarts the 10 s return timer. Once Neutral has lasted longer than a shift
-				//transient we do nothing and leave exitReverseTime as it is.
-				if(currentTime-neutralGearEntryTime < TIMING__BH____NEUTRAL_GEAR_TRANSIENT_MS){
-					exitReverseTime = 0;
-				}
-
-			}else{ //if Drive (D), Park (P) or any other gear is selected
-				neutralGearEntryTime = 0; //we are not in Neutral
-
-				if((leftParkMirrorPositionRequired || rightParkMirrorPositionRequired) && exitReverseTime == 0){ //if mirrors are potentially not in operative position,
-					exitReverseTime = currentTime; //Capture the moment we switched to D
-
-					//if P gear is selected or engine shutted off, instantly return to operative position
-					//park mirror fix 28/08/2026 - was currentRpmSpeed>400, which is engine RUNNING (see the same
-					//test used as "only if engine on" further down): leaving reverse while driving therefore always
-					//took this instant return path, and the 10 second delay right below was never reachable.
-					//currentTime+10001 is how the instant return is obtained: both operands are uint32_t, so the
-					//currentTime-exitReverseTime below underflows to a huge value and fires on this same loop.
-					if((currentGear==0x0D)||(currentRpmSpeed<=400)) exitReverseTime=currentTime+10001;
-                }
-
-
-
-				//Trigger return only after 10 seconds of constant driving forward (or instantly in case of P)
-				if(exitReverseTime != 0 && (currentTime - exitReverseTime > 10000)){
-					if(leftParkMirrorPositionRequired || rightParkMirrorPositionRequired){ //if mirrors are potentially not in operative position,
-					  restoreOperativeMirrorsPosition=1; //request to restore mirrors to their original position
-					  restoreOperativeMirrorsPositionRequestTime=currentTime;
+							break;
+						case 0x01: //right arrow inserted
+							if(!leftParkMirrorPositionRequired && !rightParkMirrorPositionRequired) storeOperativeMirrorPosition=1;//store current mirror position, if mirror was not previously lowered
+							rightParkMirrorPositionRequired=1; //Enable sending command to move mirror
+							break;
+						default:
 					}
-				    leftParkMirrorPositionRequired=0; //stop sending message to set Park position for mirrors
-				    rightParkMirrorPositionRequired=0;//stop sending message to set Park position for mirrors
-                    exitReverseTime = 0; //Reset timer after execution
+				}
+			}else if(currentGear == 0x0D || currentGear == 0x00){	//if Parking or Neutral (0x00) is selected we raise the mirrors immediately
+																	//protection against leaving the mirrors lowered in case of ignition OFF within added delay time
+																	//tested and working reliably on automatic gear box only
+																 		//maybe it is not good for manual gear box where maybe N is always set during transition from R>D
+																		//in this case remove this else if function
+				exitReverseTime = 0; //Reset timer for P/N
+
+				if(leftParkMirrorPositionRequired || rightParkMirrorPositionRequired){ //if mirrors are potentially not in operative position,
+					restoreOperativeMirrorsPosition=1; //request to restore mirrors to their original position
+					restoreOperativeMirrorsPositionRequestTime=currentTime;
+				}
+				leftParkMirrorPositionRequired=0; //stop sending message to set Park position for mirrors
+				rightParkMirrorPositionRequired=0;//stop sending message to set Park position for mirrors
+			}else{ //if Drive (D) or any other gear is selected
+				//If mirrors are lowered and timer is not armed yet, capture the exit time
+				if((leftParkMirrorPositionRequired || rightParkMirrorPositionRequired) && exitReverseTime == 0){
+					exitReverseTime = currentTime; //Capture the moment we switched to D
+				}
+
+				//Trigger return only after 10 seconds of constant driving forward
+				if(exitReverseTime != 0 && (currentTime - exitReverseTime > 10000)){ //HERE IT IS WHAT WE WANTED TO ADD - 10 seconds hysteresis delay
+					if(leftParkMirrorPositionRequired || rightParkMirrorPositionRequired){ //if mirrors are potentially not in operative position,
+						restoreOperativeMirrorsPosition=1; //request to restore mirrors to their original position
+						restoreOperativeMirrorsPositionRequestTime=currentTime;
+					}
+					leftParkMirrorPositionRequired=0; //stop sending message to set Park position for mirrors
+					rightParkMirrorPositionRequired=0;//stop sending message to set Park position for mirrors
+					exitReverseTime = 0; //Reset timer after execution
 				}
 			}
 
@@ -304,41 +422,98 @@
 
 			if(leftParkMirrorPositionRequired || rightParkMirrorPositionRequired || restoreOperativeMirrorsPosition){ //if required
 				if(!storeOperativeMirrorPosition){ //if operative position was stored
-					if(currentTime-lastParkMirrorMsgTime>900){ //each 900msec send a packet
-						// if restore mirror position arrived less than xxx seconds ago,avoid sending packets
-						//   in order to have a pause between the 2 commands
-						if(restoreOperativeMirrorsPosition){
-							if(currentTime-restoreOperativeMirrorsPositionRequestTime<TIMING__BH____PAUSE_BETWEEN_PARK_MIRROR_COMMANDS){
-								//don't do anything
-							}else{
-								can_tx(&parkMirrorMsgHeader, parkMirrorMsgData); //send msg
-								lastParkMirrorMsgTime=currentTime;
-							}
-						}
-
-						//if left or right mirror movement is required
-						if(leftParkMirrorPositionRequired || rightParkMirrorPositionRequired){
-							//if left mirror movement was  requested more than 2-3 seconds ago (ensures a pause between commands)
-							if(currentTime-leftParkMirrorPositionRequiredRequestTime>=TIMING__BH____PAUSE_BETWEEN_PARK_MIRROR_COMMANDS){
-								//if right mirror movement was  requested more than 2-3 seconds ago (ensures a pause between commands)
-								if(currentTime-rightParkMirrorPositionRequiredRequestTime>=TIMING__BH____PAUSE_BETWEEN_PARK_MIRROR_COMMANDS){
-									if(currentRpmSpeed>400 ){ //only if engine on, continue moving mirror
-										//send a message
-										can_tx(&parkMirrorMsgHeader, parkMirrorMsgData); //send msg
-										lastParkMirrorMsgTime=currentTime;
-									}
-								}
-							}
-						}
+					if(currentTime-lastParkMirrorMsgTime>900){ //each 1000msec send a packet
+						can_tx(&parkMirrorMsgHeader, parkMirrorMsgData); //send msg
+						lastParkMirrorMsgTime=currentTime;
 					}
 				}
 				if(restoreOperativeMirrorsPosition){
-					if(currentTime-restoreOperativeMirrorsPositionRequestTime>15000+TIMING__BH____PAUSE_BETWEEN_PARK_MIRROR_COMMANDS){ //after 15 seconds
+					if(currentTime-restoreOperativeMirrorsPositionRequestTime>15000){ //after 15 seconds
 						restoreOperativeMirrorsPosition=0;
 					}
 				}
 			}
 		}
+		//--- @netzmark park mirror returning delay added - end//
+
+
+		// --- REVERSE AUDIO MUTE SYSTEM ---
+		if(!reverseAutoMuteEnabled && audioSystemReverseMuted != 0){
+            // Release only a mute introduced by BACCAble; never toggle a manual mute.
+            if(audioSystemReverseMuted == 1 && audioSystemMuted == 1){
+                memcpy(centerConsoleTxMsgData, (uint8_t*)centerConsoleRxMsgData, 6);
+                centerConsoleTxMsgData[2] = 0xE0;
+                can_tx(&centerConsoleTxMsgHeader, centerConsoleTxMsgData);
+            }
+            audioSystemReverseMuted = 0;
+            exitReverseAudioTime = 0;
+        }
+		if(reverseAutoMuteEnabled){
+
+			// 1. STATE: REVERSE GEAR (0x0E) - Activate mute or log manual bypass
+			if(currentGear == 0x0E) {
+				exitReverseAudioTime = 0; // Reset timer while in Reverse
+
+				if(audioSystemReverseMuted == 0) {
+					if(audioSystemMuted == 0) {
+						// Music is playing -> copy from pure radio buffer and inject Mute button
+						memcpy(centerConsoleTxMsgData, (uint8_t*)centerConsoleRxMsgData, 6);
+						centerConsoleTxMsgData[2] = 0xE0; // Press Mute
+						can_tx(&centerConsoleTxMsgHeader, centerConsoleTxMsgData);
+
+						audioSystemReverseMuted = 1; // Locked by our automation (Safe rygiel)
+					} else {
+						audioSystemReverseMuted = 2; // User already muted the radio, bypass automation permanently
+					}
+				}
+			}
+			// 2. STATE: PARKING (0x0D) OR NEUTRAL (0x00) - Immediate restoration (Only for state 1)
+			else if(currentGear == 0x0D || currentGear == 0x00) {
+				exitReverseAudioTime = 0;
+
+				if(audioSystemReverseMuted == 1) { // Process ONLY if muted by us
+					if(audioSystemMuted == 1) { // Double check if radio is still muted
+						memcpy(centerConsoleTxMsgData, (uint8_t*)centerConsoleRxMsgData, 6);
+						centerConsoleTxMsgData[2] = 0xE0; // Press Mute again to toggle PLAY
+						can_tx(&centerConsoleTxMsgHeader, centerConsoleTxMsgData);
+					}
+				}
+				audioSystemReverseMuted = 0; // Safe reset to idle for both state 1 and 2
+			}
+			// 3. STATE: DRIVE (D) OR ANY OTHER GEAR - Safe delay only for automation
+			else {
+				// [NEW SAFE FIX]: If user manually unmuted on R, clear the state instantly on D entry (no delay needed)
+				if(audioSystemReverseMuted == 1 && audioSystemMuted == 0) {
+					audioSystemReverseMuted = 0;
+					exitReverseAudioTime = 0;
+				}
+
+				// If bypass state 2 is active, clear it instantly when moving forward (no delay needed)
+				if(audioSystemReverseMuted == 2) {
+					audioSystemReverseMuted = 0;
+					exitReverseAudioTime = 0;
+				}
+
+				// If muted by us (state 1) and timer is not armed yet, start countdown
+				if(audioSystemReverseMuted == 1 && exitReverseAudioTime == 0) {
+					exitReverseAudioTime = currentTime;
+				}
+
+				// Trigger return only after 3 seconds of constant driving forward
+				if(exitReverseAudioTime != 0 && (currentTime - exitReverseAudioTime > 3000)) {
+					if(audioSystemReverseMuted == 1) {
+						if(audioSystemMuted == 1) { // Restore only if still muted
+							memcpy(centerConsoleTxMsgData, (uint8_t*)centerConsoleRxMsgData, 6);
+							centerConsoleTxMsgData[2] = 0xE0; // Toggle back to PLAY
+							can_tx(&centerConsoleTxMsgHeader, centerConsoleTxMsgData);
+						}
+					}
+					audioSystemReverseMuted = 0; // Reset state machine to idle
+					exitReverseAudioTime = 0; // Reset timer after execution
+				}
+			}
+		}
+		//@netzmark MUTE_ON_REVERSE code - end
 	}
 
 	uint8_t saveOnFlashBH(){

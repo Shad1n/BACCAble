@@ -51,12 +51,9 @@
 	// #define HAS_VIRTUAL_PAD					// if uncommented, allows "toggle HAS" to appear on main menu. see manual. It can changed inside baccable SETUP menu.
 	// #define QV_EXHAUST_FLAP_FUNCTION_ENABLED // if uncommented, allows to force to open position, the exhaust gas valve of Giulia QV, by means of double clic of Release button located in automatic gear cars. For Manual Giulia, the "Toggle QV Valve" will be available in baccable main menu. It can changed inside baccable SETUP menu.
 	// #define PEDAL_MAP_POWER	(uint8_t)-1		// if uncommented allows to set the pedal booster map apmplification factor. It shall be a integer number between -10 and +10.
-	// #define DEBUG_CAN_RX_SIMULATION			// DO NOT USE. simulates can bus message receive. useful for debug purposes. sets the can bus to silent+loopback (own messages are received back, nothing is driven onto CAN_TX, no ack needed from another node), injects a simulated 8 byte message (id 0x1EF, last byte incrementing) every 100msec. The injected message goes thru can_tx()/can_process() like any real message, so it exercises the very same reception and interception path used for real traffic. Applies to C1baccable, C2baccable and BHbaccable.
-	// #define DEBUG_START_SNIFFER				// DO NOT USE. used during debug operations. auto-enables the SNIFFER function 10 seconds after boot, and saves to flash
-	// #define DEBUG_START_ELM327				// DO NOT USE. used during debug operations. auto-enables the ELM327 function 10 seconds after boot, and saves to flash
-	// #define FRONT_PARK_MUTE					// if uncommented it will enable "park mute" functionality. It can enabled/disabled inside baccable SETUP menu
-	// #define SNIFFER							// if uncommented it will enable "sniffer" functionality. It can enabled/disabled inside baccable SETUP menu
-	// #define ELM327							// if uncommented it will enable "elm327" functionality. It can enabled/disabled inside baccable SETUP menu
+	// #define DEBUG_CAN_RX_SIMULATION			// simulates can bus message receive. useful to test sniffer function.sets the can bus to silent+loopback (own messages are received back, nothing is driven onto CAN_TX, no ack needed from another node), injects a simulated 8 byte message (id 0x1EF, last byte incrementing) every 100msec. The injected message goes thru can_tx()/can_process() like any real message, so it exercises the very same reception and interception path used for real traffic. Applies to C1baccable, C2baccable and BHbaccable.
+	// #define DEBUG_START_SNIFFER				// auto-enables the SNIFFER function 10 seconds after boot, and saves to flash
+	// #define DEBUG_START_ELM327				// auto-enables the ELM327 function 10 seconds after boot, and saves to flash
 	
 	
 	// The following defines are used, if uncommented, by C2baccable board:
@@ -75,5 +72,16 @@
 	// #define DISABLE_CLEAR_FAULTS_BH 			// if uncommented it will disable "clear faults" functionality.
 	// #define DISPLAY_INFO_CODE 0x09			// if uncommented it will display preferred icon on dashboard (0x05=Aux, 0x06=left USB, 0x07=Right USB, 0x08=Center USB, 0x09=Bluetooth) but it may cause temporary screen freeze and string overlapping if other devices in the car tries to print the same string on dashboard.
 	// Note: The define DISABLE_ODOMETER_BLINK in C1 section above, applies to BH too (in case you use a single canable board on BH to disable odometer blink on dashboard)
+
+
+
+	// The following defines are used, if uncommented, by every boards:	
+
+	// #define HSE_ENABLED_FOR_UCAN				// if uncommented, allows to enable more stable external oscillator (HSE) using.
+												// optional feature, to theoretically improve low-temperature stability
+												// only works on boards with an external oscillator, such as the UCAN
+												// do not attempt to use this on Baccable/Cannable hardware without an on-board HSE oscillator.
+												// by @netzmark
+	
 	
 #endif /* INC_USER_CONFIG_H_SAMPLE_ */

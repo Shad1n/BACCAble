@@ -15,6 +15,8 @@
 #ifdef ACT_AS_ELM327
 
 #include <string.h>
+#include <stdio.h>
+#include "stageg_ign_diag.h"
 #include "globalVariables.h"
 #include "usbd_cdc_if.h"
 #include "onboardLed.h"
@@ -628,6 +630,69 @@ static int16_t elm_ring_get(void){
 // ------------------------------------------------------------------ AT commands
 static void elm_handle_at(const char *at){
 
+	// Stage G passive ignition snapshot; no CAN transmit or flash writes.
+	// Available only while the existing ELM327 USB mode is enabled.
+	#if defined(C1baccable)
+	if(!strcmp(at, "IGLOG")){
+        char line[112];
+        uint32_t now=currentTime;
+        /* Read-only: never synthesize timeout events from ELM327 mode. */
+        (void)snprintf(line,sizeof(line),"LIVE ms=%lu ign=%u power=%u dna=%02X rpm=%lu rfhub=%02X ss=%u",
+            (unsigned long)now,(unsigned)stageg_ign_live_ign,(unsigned)stageg_ign_live_power,
+            (unsigned)stageg_ign_live_dna,(unsigned long)currentRpmSpeed,
+            (unsigned)stageg_ign_live_rfhub,(unsigned)stageg_ign_live_ss);
+        elm_line(line);
+        (void)snprintf(line,sizeof(line),"AGE384=%lu AGE1EF=%lu AGE0FC=%lu (4294967295=never)",
+            (unsigned long)(stageg_ign_seen_384?(uint32_t)(now-stageg_ign_last_384_ms):0xFFFFFFFFu),
+            (unsigned long)(stageg_ign_seen_1ef?(uint32_t)(now-stageg_ign_last_1ef_ms):0xFFFFFFFFu),
+            (unsigned long)(stageg_ign_seen_0fc?(uint32_t)(now-stageg_ign_last_0fc_ms):0xFFFFFFFFu));
+        elm_line(line);
+        (void)snprintf(line,sizeof(line),"CNT384 T=%u R=%u 1EF T=%u R=%u 0FC T=%u R=%u",
+            (unsigned)stageg_ign_timeout_count[0],(unsigned)stageg_ign_recovery_count[0],
+            (unsigned)stageg_ign_timeout_count[1],(unsigned)stageg_ign_recovery_count[1],
+            (unsigned)stageg_ign_timeout_count[2],(unsigned)stageg_ign_recovery_count[2]);
+        elm_line(line);
+        (void)snprintf(line,sizeof(line),"IGNCNT RFshort=%u RFlong=%u RFms=%u I5to4=%u",
+            (unsigned)stageg_ign_rfhub_short_count,
+            (unsigned)stageg_ign_rfhub_long_count,
+            (unsigned)stageg_ign_rfhub_last_duration_ms,
+            (unsigned)stageg_ign_384_5to4_count);
+        elm_line(line);
+        (void)snprintf(line,sizeof(line),"IGNDUR short_ms=%u long_ms=%u",
+            (unsigned)stageg_ign_rfhub_last_short_ms,
+            (unsigned)stageg_ign_rfhub_last_long_ms);
+        elm_line(line);
+        (void)snprintf(line,sizeof(line),"IGNCONF count=%u", (unsigned)stageg_ign_confirmed_cycle_count);
+        elm_line(line);
+        (void)snprintf(line,sizeof(line),"DNADRY ready=%u skip=%u target=%02X",
+            (unsigned)stageg_dryrun_ready_count,
+            (unsigned)stageg_dryrun_skip_count,
+            (unsigned)stageg_dryrun_last_target);
+        elm_line(line);
+        (void)snprintf(line,sizeof(line),"DNAARM ready=%u already=%u target=%02X",
+            (unsigned)stageg_armed_count, (unsigned)stageg_armed_already_count,
+            (unsigned)stageg_armed_last_target);
+        elm_line(line);
+        (void)snprintf(line,sizeof(line),"DNAGUARD request=%u manual=%u target=%02X",
+            (unsigned)stageg_guard_request_count,
+            (unsigned)stageg_guard_manual_count,
+            (unsigned)stageg_guard_request_target);
+        elm_line(line);
+        uint32_t count=stageg_ign_event_count;
+		uint32_t first=(count>8u)?(count-8u):0u;
+		(void)snprintf(line,sizeof(line),"IGLOG COUNT=%lu",(unsigned long)count);
+		elm_line(line);
+		for(uint32_t n=first;n<count;n++){
+			const volatile stageg_ign_event_t *e=&stageg_ign_events[n%8u];
+			(void)snprintf(line,sizeof(line),"%lu,%lu,%u,%u,%02X,%u,%02X,%u,%u",
+                (unsigned long)n,(unsigned long)e->ms,(unsigned)e->ignition_raw,
+                (unsigned)e->power_raw,(unsigned)e->dna_mode,(unsigned)e->rpm,
+                (unsigned)e->rfhub_raw,(unsigned)e->stopstart_raw,(unsigned)e->event);
+			elm_line(line);
+		}
+		return;
+	}
+	#endif
 	if(!strcmp(at, "Z")){					//full reset
 		elm_reset_defaults();
 		HAL_Delay(50);

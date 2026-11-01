@@ -168,61 +168,64 @@ const char *FW_VERSION=_FW_VERSION;
 	uint8_t main_dashboardPageIndex=0;
 	uint8_t dashboard_menu_indent_level=0;
 	uint8_t maxHold_enabled=0; // 0=Max Hold OFF, 1=Max Hold ON (RAM only, resets on power cycle)
-	uint8_t dashboard_main_menu_array_len=16;
-	uint8_t dashboard_main_menu_array[20][DASHBOARD_MESSAGE_MAX_LENGTH]={
+	uint8_t dashboard_main_menu_array_len=18;
+	uint8_t dashboard_main_menu_array[20][30]={
 			{},
-			{'S','h','o','w',' ','P','a','r','a','m','e','t','e','r','s',' ',' ',' '},
-			{'R','e','a','d',' ','F','a','u','l','t','s',' ',' ',' ',' ',' ',' ',' '},
-			{'C','l','e','a','r',' ','F','a','u','l','t','s',' ',' ',' ',' ',' ',' '},
-			{'I','m','m','o','b','i','l','i','z','e','r',' ',' ','O','N',' ',' ',' '},
+			{'S','h','o','w',' ','p','a','r','a','m','e','t','e','r','s',' ',' ',' '},
+			{'R','e','a','d',' ','f','a','u','l','t','s',' ',' ',' ',' ',' ',' ',' '},
+			{'C','l','e','a','r',' ','f','a','u','l','t','s',' ',' ',' ',' ',' ',' '},
+			{'I','m','m','o','b','i','l','i','z','e','r',' ','O','n',' ',' ',' ',' '},
 			{'T','o','g','g','l','e',' ','D','Y','N','O',' ',' ',' ',' ',' ',' ',' '},
 			{'T','o','g','g','l','e',' ','E','S','C','/','T','C',' ',' ',' ',' ',' '},
-			{'F','r','o','n','t',' ','B','r','a','k','e',' ','N','o','r','m','a','l'},
-			{'4','W','D',' ',' ','E','n','a','b','l','e','d',' ',' ',' ',' ',' ',' '},
-			{'M','a','i','n',' ','S','e','t','u','p',' ','M','e','n','u',' ',' ',' '},
-			{'P','a','r','a','m','s',' ','S','e','t','u','p',' ','M','e','n','u',' '},
+			{'F','r','o','n','t',' ','b','r','a','k','e',' ','N','o','r','m','a','l'},
+			{'4','W','D',' ',' ','e','n','a','b','l','e','d',' ',' ',' ',' ',' ',' '},
+			{'M','a','i','n',' ','s','e','t','u','p',' ','m','e','n','u',' ',' ',' '},
+			{'P','a','r','a','m','s',' ','s','e','t','u','p',' ','m','e','n','u',' '},
 			{'E','n','a','b','l','e',' ','H','A','S',' ',' ',' ',' ',' ',' ',' ',' '},
-			{'T','o','g','g','l','e',' ','E','x','h','a','u','s','t',' ',' ',' ',' '}, //exhaust valves DR 11/10/2026 - was "Toggle QV Valve"
-			{'S','a','v','e',' ','L','o','g',' ','t','o',' ','F','i','l','e',' ',' '},
-			{'R','e','s','e','t',' ','S','t','a','t','i','s','t','i','c','s',' ',' '},
-		{'M','a','x',' ','H','o','l','d',' ','O','F','F',' ',' ',' ',' ',' ',' '},
+			{'T','o','g','g','l','e',' ','e','x','h','a','u','s','t',' ',' ',' ',' '}, // exhaust valves DR 11/10/2026 - was "Toggle QV Valve"
+			{'S','a','v','e',' ','l','o','g',' ','t','o',' ','f','i','l','e',' ',' '},
+			{'R','e','s','e','t',' ','s','t','a','t','i','s','t','i','c','s',' ',' '},
+			{'M','a','x',' ','h','o','l','d',' ','O','f','f',' ',' ',' ',' ',' ',' '},
+            {'F','e','a','t','u','r','e','s',' ','m','e','n','u',' ',' ',' ',' ',' '},
+            {'E','x','i','t',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' '},
 
 	};
 	uint8_t setup_dashboardPageIndex=0;
-	uint8_t total_pages_in_setup_dashboard_menu=32; //elm327 function 26/08/2026 - was 30, ELM327 entry added //DNA memory 18/10/2026 - was 31
-	uint8_t dashboard_setup_menu_array[32][DASHBOARD_MESSAGE_MAX_LENGTH]={ //elm327 function 26/08/2026 - was [30], the array was full //DNA memory 18/10/2026 - was [31]
-			{'S','A','V','E','&','E','X','I','T',' ',' ',' ',' ',' ',' ',' ',' ',' '},
-			{'O',' ',' ','S','t','a','r','t','&','S','t','o','p',' ',' ',' ',' ',' '},
-			{'L','a','u','n','c','h','T','o','r','q','u','e',' ','1','0','0','N','m'},
-			{'O',' ',' ','L','e','d',' ','C','o','n','t','r','o','l','l','e','r',' '},
-			{'O',' ',' ','S','h','i','f','t',' ','I','n','d','i','c','a','t','o','r'},
-			{'S','h','i','f','t',' ','R','P','M',' ','3','0','0','0',' ',' ',' ',' '},
-			{'O',' ',' ','M','y','2','3',' ','I','P','C',' ',' ',' ',' ',' ',' ',' '},
-			{'O',' ',' ','R','e','g','e','n','.',' ','A','l','e','r','t',' ',' ',' '},
-			{0xD8,' ',' ','S','e','a','t','b','e','l','t',' ','A','l','a','r','m',' '},
-			{'O',' ',' ','R','o','u','t','e',' ','M','e','s','s','a','g','e','s',' '},
-			{'O',' ',' ','E','S','C','/','T','C',' ','C','u','s','t','o','m','.',' '},
-			{'O',' ',' ','D','y','n','o',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' '},
-			{'O',' ',' ','A','C','C',' ','V','i','r','t','u','a','l',' ','P','a','d'},
-			{'O',' ',' ','B','r','a','k','e','s',' ','O','v','e','r','r','i','d','e'},
-			{'O',' ',' ','4','W','D',' ','D','i','s','a','b','l','e','r',' ',' ',' '},
-			{'O',' ',' ','C','l','e','a','r',' ','F','a','u','l','t','s',' ',' ',' '},
-			{'O',' ',' ','R','e','a','d',' ',' ','F','a','u','l','t','s',' ',' ',' '},
-			{'O',' ',' ','R','e','m','o','t','e',' ','S','t','a','r','t',' ',' ',' '},
-			{0xD8,' ',' ','D','i','e','s','e','l',' ',' ',' ','P','a','r','a','m','s'},
-			{'O',' ',' ','O','d','o','m','e','t','e','r',' ','B','l','i','n','k',' '},
-			{'O',' ',' ','P','e','d','a','l',' ','B','o','o','s','t','e','r',' ',' '},
-			{'P','e','d','a','l',' ','P','o','w','e','r',':',' ','0',' ',' ',' ',' '},
-			{'O',' ',' ','P','a','r','k',' ','M','i','r','r','o','r',' ',' ',' ',' '},
-			{'O',' ',' ','A','C','C',' ','A','u','t','o','s','t','a','r','t',' ',' '},
-			{'O',' ',' ','C','l','o','s','e',' ','W','i','n','d','o','w','s',' ',' ',},
-			{'O',' ',' ','O','p','e','n',' ',' ','W','i','n','d','o','w','s',' ',' ',},
-			{'O',' ',' ','H','A','S',' ','V','i','r','t','u','a','l',' ','P','a','d',},
-			{'O',' ',' ','E','x','h','a','u','s','t',' ','F','l','a','p',' ',' ',' ',}, //exhaust valves DR 11/10/2026 - was "QV Exhaust Flap"; " DR" at the end with value 2
-			{'O',' ',' ','F','r','o','n','t',' ','P','a','r','k',' ','M','u','t','e',},
-			{'O',' ',' ','S','N','I','F','F','E','R',' ',' ',' ',' ',' ',' ',' ',' ',}, //sniffer function 24/08/2026
-			{'O',' ',' ','E','L','M','3','2','7',' ',' ',' ',' ',' ',' ',' ',' ',' ',}, //elm327 function 26/08/2026 - last free slot of the array
-			{'O',' ',' ','D','N','A',' ','M','e','m','o','r','y',' ',' ',' ',' ',' ',}, //DNA memory 18/10/2026
+	uint8_t total_pages_in_setup_dashboard_menu=33; //elm327 function 26/08/2026 - was 30, ELM327 entry added
+	uint8_t dashboard_setup_menu_array[33][30]={ //elm327 function 26/08/2026 - was [30], the array was full
+			{'S','a','v','e','&','E','x','i','t',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' '},
+			{'O',' ',' ','S','t','a','r','t','&','S','t','o','p',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' '},
+			{'L','a','u','n','c','h',' ','t','o','r','q','u','e',' ','1','0','0','N','m',' ',' ',' ',' ',' ',' ',' '},
+			{'O',' ',' ','L','e','d',' ','c','o','n','t','r','o','l','l','e','r',' ',' ',' ',' ',' ',' ',' ',' ',' '},
+			{'O',' ',' ','S','h','i','f','t',' ','i','n','d','i','c','a','t','o','r',' ',' ',' ',' ',' ',' ',' ',' '},
+			{'S','h','i','f','t',' ','R','P','M',' ','3','0','0','0',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' '},
+			{'O',' ',' ','M','y','2','3',' ','I','P','C',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' '},
+			{'O',' ',' ','R','e','g','e','n','.',' ','a','l','e','r','t',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' '},
+			{0xD8,' ',' ','S','e','a','t','b','e','l','t',' ','a','l','a','r','m',' ',' ',' ',' ',' ',' ',' ',' ',' '},
+			{'O',' ',' ','R','o','u','t','e',' ','m','e','s','s','a','g','e','s',' ',' ',' ',' ',' ',' ',' ',' ',' '},
+			{'O',' ',' ','E','S','C','/','T','C',' ','c','u','s','t','o','m','i','z','e',' ',' ',' ',' ',' ',' ',' '},
+			{'O',' ',' ','D','Y','N','O',' ','c','u','s','t','o','m','i','z','e',' ',' ',' ',' ',' ',' ',' ',' ',' '},
+			{'O',' ',' ','A','C','C',' ','v','i','r','t','u','a','l',' ','p','a','d',' ',' ',' ',' ',' ',' ',' ',' '},
+			{'O',' ',' ','F','r','o','n','t',' ','b','r','a','k','e','s',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' '},
+			{'O',' ',' ','4','W','D',' ','d','i','s','a','b','l','e','r',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' '},
+			{'O',' ',' ','C','l','e','a','r',' ','f','a','u','l','t','s',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' '},
+			{'O',' ',' ','R','e','a','d',' ',' ','f','a','u','l','t','s',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' '},
+			{'O',' ',' ','R','e','m','o','t','e',' ','s','t','a','r','t',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' '},
+			{0xD8,' ',' ','D','i','e','s','e','l',' ',' ',' ','p','a','r','a','m','e','t','e','r','s',' ',' ',' ',' '},
+			{'O',' ',' ','O','d','o','m','e','t','e','r',' ','b','l','i','n','k',' ',' ',' ',' ',' ',' ',' ',' ',' '},
+			{'O',' ',' ','P','e','d','a','l',' ','b','o','o','s','t','e','r',' ',' ',' ',' ',' ',' ',' ',' ',' ',' '},
+			{'P','e','d','a','l',' ','P','o','w','e','r',':',' ','0',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' '},
+			{'O',' ',' ','P','a','r','k',' ','m','i','r','r','o','r',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' '},
+			{'O',' ',' ','A','C','C','+',' ','a','u','t','o','s','t','a','r','t',' ',' ',' ',' ',' ',' ',' ',' ',' '},
+			{'O',' ',' ','C','l','o','s','e',' ','w','i','n','d','o','w','s',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',},
+			{'O',' ',' ','O','p','e','n',' ',' ','w','i','n','d','o','w','s',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',},
+			{'O',' ',' ','H','A','S',' ','V','i','r','t','u','a','l',' ','p','a','d',' ',' ',' ',' ',' ',' ',' ',' ',},
+			{'O',' ',' ','E','x','h','a','u','s','t',' ','f','l','a','p',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',},
+			{'O',' ',' ','F','r','o','n','t',' ','P','a','r','k',' ','M','u','t','e',' ',' ',' ',' ',' ',' ',' ',' ',},
+            {'O',' ',' ','R','e','v','e','r','s','e',' ','m','u','t','e',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',},
+			{'O',' ',' ','D','N','A',' ','m','e','m','o','r','y',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',}, // Stage G
+			{'O',' ',' ','S','n','i','f','f','e','r',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',},
+			{'O',' ',' ','E','L','M','3','2','7',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',},
 
 		};
 
@@ -244,16 +247,14 @@ const char *FW_VERSION=_FW_VERSION;
 	uint8_t dashboardPageIndex=0; //to send message index - it changes when you press cruise control buttons
 	uint32_t last_sent_uds_parameter_request_Time=0; //stores last time we send a uds parameter request
 
+	uint8_t last_41A_raw_data[8]={0};	// raw 0x41A frame data for diagnostic parameters
+
 	uint8_t dieselEngineRegenerationMode=0; //0=None, 1=DPF_REGEN_LO, 2=DPF_REGEN_HI, 3=NSC_DE_NOX_REGEN, 4=NSC_DE_SOX_REGEN, 5=SCR_HEATUP_STRATEGY
 
 	//
 	uint8_t cruiseControlDisabled=1;
-	//uint8_t ACC_Disabled=1;
-	//uint8_t ACC_engaged=0;
-	uint8_t ACC_status=0; 	//Legend: 0=Off, 1=Enabled, 2=Engaged, 3=EngagedBrakeOnly, 4=EngagedOverride, 5=Cancel, 6=SuggestionEngaged, 7=SuggestionOverride
-							//note: 5 is fired when acc is engaged and you press brake, so acc becomes not engaged
-							//note: 4 and 7 are fired when acc is engaged and you press accelerator
-
+	uint8_t ACC_Disabled=1;
+	uint8_t ACC_engaged=0;
 	uint8_t wheelPressedButtonID=0x10; //0x10= released, 0x20=strong speed decrease, 0x18=speed decrease, 0x00=strong speed increase, 0x08=speed increase, 0x90=RES, CC on/off=0x12
 	uint8_t  lastPressedWheelButton=0xff; //default value, means no button pressed on the wheel
 	uint32_t lastPressedWheelButtonTime=0;//stores the last time a wheel button was pressed, in msec from boot
@@ -283,7 +284,7 @@ const char *FW_VERSION=_FW_VERSION;
 	//_4WD_DISABLER_ENABLED
 	uint8_t function_4wd_disabler_enabled=1; //default enabled . stored in flash
 	CAN_TxHeaderTypeDef driveTrainControlModuleResetMsgHeader[4]={{.IDE=CAN_ID_EXT, .RTR = CAN_RTR_DATA, .ExtId=0x18DA1AF1, .DLC=3},{.IDE=CAN_ID_EXT, .RTR = CAN_RTR_DATA, .ExtId=0x18DA1AF1, .DLC=7},{.IDE=CAN_ID_EXT, .RTR = CAN_RTR_DATA, .ExtId=0x18DA1AF1, .DLC=3},{.IDE=CAN_ID_EXT, .RTR = CAN_RTR_DATA, .ExtId=0x18DA1AF1, .DLC=3}};
-	uint8_t driveTrainControlModuleResetMsgData[4][8]= {{0x02, 0x11, 0x01,},{0x06, 0x2F, 0x2A, 0xAA, 0x03, 0x00, 0x00,},{0x02, 0x3E, 0x80,},{0x02, 0x10, 0x03,}}; //from last to first we have: diag session, tester present, IO Control - Short Term Adjustment(set front torque to 0), reset ECU. note: 0064 dovrebbe impostare il 4x4 attivo
+	uint8_t driveTrainControlModuleResetMsgData[4][8]= {{0x02, 0x11, 0x01,},{0x06, 0x2F, 0x2A, 0xAA, 0x03, 0x00, 0x00,},{0x02, 0x3E, 0x80,},{0x02, 0x10, 0x03,}}; //from last to first we have: diag session, tester present, IO Control - Short Term Adjustment(set front torque to 0), reset ECU
 	uint32_t last_sent_drive_train_msg_time=0;
 
 	//IPC_MY23_IS_INSTALLED
@@ -362,6 +363,7 @@ const char *FW_VERSION=_FW_VERSION;
 	uint32_t lastSentAutostartMsg=0;
 	uint8_t AutostartMsgCounter=0;
 	uint8_t brakeIntervention_ACC_ESC_ASR=0; //tells if brake is pressed
+	volatile uint8_t autostartActiveBurst=0; //@netzmark Autostart improvement
 
 	//CLOSE_WINDOWS
 	uint8_t function_close_windows_with_door_lock=0; //0=disabled, 1=close windows1, 2=close windows2
@@ -378,7 +380,7 @@ const char *FW_VERSION=_FW_VERSION;
 	uint8_t RF_fob_number=0;
 
 	//QV_EXHAUST_FLAP_FUNCTION_ENABLED
-	uint8_t QV_exhaust_flap_function_enabled=0; //0=disabled, 1=enabled (double click / menu), 2=enabled + automatic with the drive style (D/R open, N/A close) //exhaust valves DR 11/10/2026
+	uint8_t QV_exhaust_flap_function_enabled=0;
 	uint8_t ForceQVexhaustValveOpened=0; //state machine: 0=valve automatically selected by ECU, 1=connection request to send, 2=tester present to send, 3=temporary param overwrite, 4=return control to ECU to send
 	uint32_t lastSentQVexhaustValveMsgTime=0;
 	CAN_TxHeaderTypeDef forceQVexhaustValveMsgHeader[4] ={{.IDE=CAN_ID_EXT, .RTR = CAN_RTR_DATA, .ExtId=0x18DA17F1, .DLC=3},{.IDE=CAN_ID_EXT, .RTR = CAN_RTR_DATA, .ExtId=0x18DA17F1, .DLC=3},{.IDE=CAN_ID_EXT, .RTR = CAN_RTR_DATA, .ExtId=0x18DA17F1, .DLC=7},{.IDE=CAN_ID_EXT, .RTR = CAN_RTR_DATA, .ExtId=0x18DA17F1, .DLC=5}};
@@ -391,22 +393,23 @@ const char *FW_VERSION=_FW_VERSION;
 	uint32_t exhaustValveMosfetCommandTime=0; //time when mosfet was closed
 	uint8_t ChineseExhaustValveRequest=0; //0=no request, 'O'=open request, 'C'=Close request
 	uint8_t chineseValveIsOpened=0; //0=closed, 1=opened
+
 	uint8_t exhaustValvesDNAmode=0xFF; //drive style the valves were last set for (function value 2), 0xFF=none yet //exhaust valves DR 11/10/2026
 	uint8_t exhaustValvesReassert=0; //1=the engine started again: the next drive style received sets the valves again (function value 2) //exhaust valves DR 11/10/2026
 	uint8_t exhaustValvesEngineRunning=0; //1=engine running (rpm went above EXHAUST_VALVES_ENGINE_RUNNING_RPM, back to 0 only at rpm 0), to detect the engine starting again //exhaust valves DR 11/10/2026
-	uint8_t  dnaMemoryFunctionEnabled=0; //0=disabled, 1=enabled, saved on flash (slot 33) //DNA memory 18/10/2026
-	uint8_t  dnaMemoryStyle=0xFF; //drive style to restore (0x384 codes), 0xFF=none yet //DNA memory 18/10/2026
-	volatile uint8_t dnaMemoryWakeUp=0; //1=the car just woke up //DNA memory 18/10/2026
-	uint8_t  dnaMemoryRestoreArmed=0; //1=restore at the next engine start //DNA memory 18/10/2026
-	uint32_t dnaMemoryEngineOnTime=0; //when the engine was seen running, 0=not running //DNA memory 18/10/2026
-	uint32_t dnaMemoryCommandTime=0; //when the restore command was sent to BH, 0=none //DNA memory 18/10/2026
+	#if defined(REVERSE_MUTE_ENABLED) && REVERSE_MUTE_ENABLED
+    uint8_t reverseMuteFunctionEnabled=1;
+#else
+    uint8_t reverseMuteFunctionEnabled=0;
+#endif // C1 Flash slot 34 (reserved in v3.9.3)
+	uint8_t dnaMemoryFunctionEnabled=0; // flash slot 33, default disabled
 	uint8_t exhaustValvesOpenRequested=0; //1=the user wants the valves open (double click / menu): kept in ram while the engine is off and applied again as soon as it rotates //exhaust valves memory 11/10/2026
 
 	//pumpForce test25/07/2026 - BEGIN
 	// Definizioni variabili per la sequenza UDS di forzatura pompa carburante (ECM 0x10)
 	// pumpForceTxHeader ha ExtId fisso 0x18DA10F1; DLC viene aggiornato prima di ogni trasmissione.
 	// pumpForceTxData è un buffer generico riusato per ciascun messaggio della sequenza.
-	uint8_t  function_pump_force_enabled = 1;   // =1 abilitato per test //pumpForce test25/07/2026
+	uint8_t  function_pump_force_enabled = 0;   // =1 abilitato per test //pumpForce test25/07/2026
 	uint8_t  pumpForceStateMachine = 0xFF;       // 0xFF=inattivo, 0-2=handshake in corso, 3=invio periodico
 	uint8_t  ecmSeed[4];                          // seed ECM (4 byte), valido tra ricezione 67 01 e invio 27 02
 	uint32_t lastPumpForceMsgTime = 0;            // msec dall'ultimo msg inviato: timeout handshake e cadenza 200ms
@@ -416,31 +419,19 @@ const char *FW_VERSION=_FW_VERSION;
 
 	//readFaults 12/08/2026 - BEGIN
 	// Definizioni variabili per la sequenza UDS di lettura DTC dal Body ECU (ECU 0x40)
-	// I record DTC vengono decodificati man mano che arrivano (faultsConsumePayloadByte): niente buffer del payload.
-	// faultsTxHeader: ExtId 0x18DA40F1 (BODY) o 0x18DA10F1 (ECM), impostato da faultsStartEcuSession; DLC aggiornato prima di ogni can_tx. //readFaults ECM 10/10/2026
+	// Il buffer faultsRxBuffer accumula il payload ISO-TP completo (primo frame + consecutivi).
+	// faultsBodyTxHeader ha ExtId fisso 0x18DA40F1; DLC aggiornato prima di ogni can_tx.
 	uint8_t  faultsStateMachine = 0xFF;              // 0xFF=inattivo
 	uint8_t  faultsDTCcount = 0;                     // numero DTC ricevuti e validi
-	float    brakeTravelStatus = 0;                  // brake pedal press percentage from 0x107 (raw*0.4), shown in show params //brake in show params 10/10/2026
-	uint8_t  parkMuteBrakeSent = 0xFF;               // ultimo stato freno inviato alla C2 per il park mute (0xFF = da inviare) //park mute brake from C1 10/10/2026
-	uint16_t faultsDTCtotal = 0;                     // readFaults fix 05/10/2026 - DTC validi nella risposta, anche oltre FAULTS_DTC_MAX (mostrato come totale n/m)
 	uint8_t  faultsDTCsubmenuIndex = 0;              // indice corrente scorrimento lista DTC
 	uint8_t  faultsDTCbytes[FAULTS_DTC_MAX][3];      // record DTC: [high, mid, low] per record
-	uint8_t  faultsRecord[4];                        // readFaults fix 05/10/2026 - record DTC in composizione [hi][mid][lo][status]
-	uint8_t  faultsRecordFill = 0;                   // readFaults fix 05/10/2026 - byte gia' presenti in faultsRecord
+	uint8_t  faultsRxBuffer[90];                     // buffer riassemblaggio ISO-TP payload
 	uint16_t faultsRxExpected = 0;                   // byte totali attesi (da first frame)
 	uint16_t faultsRxReceived = 0;                   // byte payload ricevuti finora
 	uint8_t  faultsRxNextSN = 0;                     // numero sequenza atteso prossimo CF
 	uint32_t faultsTimer = 0;                        // timestamp per timeout e display TIMEOUT
-	CAN_TxHeaderTypeDef faultsTxHeader = {.IDE=CAN_ID_EXT, .RTR=CAN_RTR_DATA, .ExtId=0x18DA40F1, .DLC=3};
-	uint8_t  faultsTxData[8];                    // buffer dati CAN per tutte le tx verso la ECU in lettura (BODY o ECM)
-	uint8_t  faultsEcu = FAULTS_ECU_BODY;            // ECU in lettura: prima BODY, poi ECM se la lista non e' piena //readFaults ECM 10/10/2026
-	uint8_t  faultsDTCecmEnd = 0;                    // faultsDTCbytes[faultsDTCbodyCount..faultsDTCecmEnd-1] sono dell'ECM, i successivi dell'ABS //readFaults ABS 10/10/2026
-	uint8_t  faultsAbsNextIndex = 0;                 // prossimo DTC ABS (indice nella lista di C2) chiesto con C2cmdAbsFaultsGet //readFaults ABS 10/10/2026
-	volatile uint8_t faultsAbsInbox[FAULTS_ABS_INBOX_LEN][UART_BUFFER_SIZE]; // messaggi C1cmdAbsFaultsReply copiati dall'interrupt uart //readFaults ABS 10/10/2026
-	volatile uint8_t faultsAbsInboxHead = 0, faultsAbsInboxTail = 0; //readFaults ABS 10/10/2026
-	uint8_t  faultsDTCbodyCount = 0;                 // faultsDTCbytes[0..faultsDTCbodyCount-1] sono del BODY, i successivi dell'ECM //readFaults ECM 10/10/2026
-	uint8_t  faultsResponsePending = 0;              // readFaults fix 05/10/2026 - 1 = ricevuto 7F xx 78 (responsePending): timeout esteso a P2*server
-	uint8_t  snifferLastFaultsState = 0xFF;          // readFaults debug 05/10/2026 - ultimo faultsStateMachine tracciato da C1baccablePeriodicCheck
+	CAN_TxHeaderTypeDef faultsBodyTxHeader = {.IDE=CAN_ID_EXT, .RTR=CAN_RTR_DATA, .ExtId=0x18DA40F1, .DLC=3};
+	uint8_t  faultsBodyTxData[8];                    // buffer dati CAN per tutte le tx verso Body ECU
 	//readFaults 12/08/2026 - END
 
 
@@ -457,7 +448,6 @@ const char *FW_VERSION=_FW_VERSION;
 #endif
 
 #if defined(C2baccable)
-
 	//DYNO_MODE
 
 	uint8_t DynoModeEnabled=0;
@@ -468,8 +458,6 @@ const char *FW_VERSION=_FW_VERSION;
 	uint32_t last_sent_tester_presence_msg_time=0; //stores time in millisec. from last sent presence. used when dyno is enabled
 	uint32_t DynoStateMachineLastUpdateTime=0; //stores time (in milliseconds from power on) when Park Assist button press was read last time
 	uint8_t ParkAssistButtonPressCount=0; //stores number of times this message field was received
-	uint8_t snifferDynoLastModeEnabled=0;		//dyno debug 04/10/2026 - last DynoModeEnabled traced by C2PeriodicCheck, to emit a debug frame only on change
-	uint8_t snifferDynoLastStateMachine=0xff;	//dyno debug 04/10/2026 - last DynoStateMachine traced by C2PeriodicCheck, to emit a debug frame only on change
 
 	//FRONT_BRAKE_FORCER
 	uint32_t last_sent_rear_brake_msg_time=0;
@@ -477,25 +465,25 @@ const char *FW_VERSION=_FW_VERSION;
 	CAN_TxHeaderTypeDef rearBrakeMsgHeader[4]={{.IDE=CAN_ID_EXT, .RTR = CAN_RTR_DATA, .ExtId=0x18DA28F1, .DLC=5},{.IDE=CAN_ID_EXT, .RTR = CAN_RTR_DATA, .ExtId=0x18DA28F1, .DLC=8},{.IDE=CAN_ID_EXT, .RTR = CAN_RTR_DATA, .ExtId=0x18DA28F1, .DLC=3},{.IDE=CAN_ID_EXT, .RTR = CAN_RTR_DATA, .ExtId=0x18DA28F1, .DLC=3}};
 	uint8_t rearBrakeMsgData[4][8]= {{0x04, 0x2F, 0x5A, 0xBD, 0x00,},{0x07, 0x2F, 0x5A, 0xBD, 0x03, 0x27, 0x10, 0x03},{0x02, 0x3E, 0x80,},{0x02, 0x10, 0x40,}}; //from last to first we have: diag session, tester present, IO Control - Short Term Adjustment(disable front brakes) (periodic)
 
-	uint8_t reverseGearActive  =0; //0=reverse not engaged, 1=reverse engaged (normalised in processingMessage0x000000FC.c)
+	//uint8_t reverseGearActive  =0; //0=not inserted, 1=rear gear engaged, 2=not used
 	uint8_t parkSensorsFunctionStatus=0; //0=off, 1=ON active, 2=ON inactive, 3=ON disabled
 	uint8_t parkSensorsLedStatus; //0=off, 1=continuous, 2=blink
 
-	// Park Mute - see functions_C2baccable.c
-	volatile uint8_t  pdc_is_beeping     = 0; //1=front sensors in alarm (from 0x3E7)
-	volatile uint8_t  pdc_auto_disabled  = 0; //1=the park sensors are off because WE switched them off
-	volatile uint8_t  requestToTogglePDC = 0; //1=a button press has to be simulated
-	volatile int      pdc_send_counter   = 0; //0=nothing in progress, 1=button pushed, waiting to release it
-	volatile uint32_t last_pdc_shot_time = 0; //when the push was sent
-	uint8_t pdcMsgData[8]={0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-	CAN_TxHeaderTypeDef pdcMsgHeader={.IDE = CAN_ID_STD, .RTR = CAN_RTR_DATA, .StdId = 0x5B0, .DLC = 8};
-	uint32_t parkMuteReverseStartTime=0; //when the reverse gear was seen engaged, 0=not engaged //park mute reverse fix 13/10/2026
-	uint32_t parkMuteLastEvaluationTime=0; //last time parkMuteEvaluate() ran (every 30 ms, only with the function enabled) //park mute brake from C1 10/10/2026
-	volatile uint8_t parkMuteBrakePressed=0; //1=brake pressed, as sent by C1 over uart (0x107 is not on the C2 bus) //park mute brake from C1 10/10/2026
+//	// @netzmark PDC auto disable - see functions_C2baccable.c
+//	volatile uint8_t  pdc_is_beeping     = 0; //1=front sensors in alarm (from 0x3E7)
+//	volatile uint8_t  pdc_auto_disabled  = 0; //1=the park sensors are off because WE switched them off
+//	volatile uint8_t  requestToTogglePDC = 0; //1=a button press has to be simulated
+//	volatile int      pdc_send_counter   = 0; //0=nothing in progress, 1=button pushed, waiting to release it
+//	volatile uint32_t last_pdc_shot_time = 0; //when the push was sent
+//	uint8_t pdcMsgData[8]={0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+//	CAN_TxHeaderTypeDef pdcMsgHeader={.IDE = CAN_ID_STD, .RTR = CAN_RTR_DATA, .StdId = 0x5B0, .DLC = 8};
 
 	//readFaults ABS 10/10/2026 - ABS faults read by C2 for C1 (see functions_C2baccable.c and uart.h, FAULTS ABS PROTOCOL)
 	uint8_t  absFaultsState = 0xFF;
 	volatile uint8_t absFaultsStartRequest = 0;
+	volatile uint8_t absFaultsRequestId = 0;
+	volatile uint8_t absFaultsGetRequestId = 0;
+	volatile uint8_t absFaultsGetIndexRequest = 0;
 	volatile uint8_t absFaultsGetIndex = 0xFF;
 	uint8_t  absFaultsDTCcount = 0;
 	uint16_t absFaultsDTCtotal = 0;
@@ -589,8 +577,6 @@ UART_HandleTypeDef huart2; // this is the serial line between baccables
 
 uint32_t currentRpmSpeed=0;	//used by C1baccable
 uint8_t currentGear=0; 		//used by C1baccable and BHbaccable
-							//currentGear on BH(0x3E8) and C1(0x5A8): 	0=N, 1-9=1-9, 0xD=P,   0xE=R, 0xF=Undefined
-							//currentGear on C1(msg 0x2EF): 			0=N, 1-6 and 8-10=1-9, 0x7=R, 0xF=Undefined
 
 // Storage for status and received message buffer
 CAN_RxHeaderTypeDef rx_msg_header;  //msg header
@@ -603,10 +589,6 @@ uint8_t front_brake_forced=0; //if=5 disables Front brakes
 uint8_t DynoModeEnabledOnMaster=0; //status of dyno in master board. tells if dyno is active
 uint32_t last_4wd_disabled_overlay_time = 0; // 4wd constraint relax change 24/08/2026
 uint8_t  show_4wd_disabled_overlay = 0;       // 4wd constraint relax change 24/08/2026
-#if defined(C1baccable)
-	uint8_t snifferLast4wdDisabled=0;			//dyno debug 04/10/2026 - last _4wd_disabled traced by C1baccablePeriodicCheck, to emit a debug frame only on change
-	uint8_t snifferLastDynoEnabledOnMaster=0;	//dyno debug 04/10/2026 - last DynoModeEnabledOnMaster traced by C1baccablePeriodicCheck (it is written by the uart rx interrupt, where tracing is not allowed)
-#endif
 
 //sniffer function 24/08/2026 - BEGIN
 #if defined(C1baccable) || defined(C2baccable) || defined(BHbaccable)
@@ -623,7 +605,6 @@ uint8_t  show_4wd_disabled_overlay = 0;       // 4wd constraint relax change 24/
 	uint16_t snifferRingCount=0;
 	uint16_t snifferDroppedFrames=0;
 	uint32_t snifferLastFlushTime=0;
-	uint16_t snifferInflightBytes=0; //sniffer tx/debug 04/10/2026
 
 	#ifdef DEBUG_CAN_RX_SIMULATION
 		uint32_t debugSimulatedMsgLastInjectTime=0;
@@ -711,5 +692,38 @@ uint8_t usbConnectedToSlave=0; //tells if usb port is connected to BH or C2
 uint8_t usbConnectedToC2=0; //sniffer function 24/08/2026 - on C1: tracked per slave, see globalVariables.h
 uint8_t usbConnectedToBH=0; //sniffer function 24/08/2026
 
+// @netzmark PDC code - begin
+//PDC_AUTO_DISABLE
+#if defined(C2baccable)
+	volatile uint8_t pdc_state_disabled	 = 0; // 0 = PDC enabled, 1 = PDC disabled (LED off)
+	volatile uint8_t pdc_is_beeping   	 = 0; // 1 = sensors in alarms
+	volatile uint8_t pdc_auto_disabled 	 = 0; // 1 = PDC was disabled with our procedure
+	volatile uint8_t  requestToTogglePDC = 0;
+	volatile uint8_t  reverseGearActive  =0; //used on CAN C2 only
+	uint8_t pdcMsgData[8]={0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	CAN_TxHeaderTypeDef pdcMsgHeader={.IDE = CAN_ID_STD, .RTR = CAN_RTR_DATA, .StdId = 0x5B0, .DLC = 8};
+	volatile int pdc_send_counter=0;
+	volatile uint32_t last_pdc_shot_time = 0;
+	volatile uint8_t vehicle_is_moving = 0; // in default "car not moving"
+#endif
+// @netzmark PDC code - end
 
+// @netzmark MUTE_ON_REVERSE code - begin
+//MUTE_ON_REVERSE
+#if defined(BHbaccable)
+	volatile uint32_t audioSystemMuteFeedbackTime = 0;
+	volatile uint8_t bhHuTextRestoreRequest = 0;
+	volatile uint8_t audioSystemMuted = 0;          // 0 = play, 1 = muted
+	#if defined(REVERSE_MUTE_ENABLED) && REVERSE_MUTE_ENABLED
+    uint8_t reverseAutoMuteEnabled=1;
+#else
+    uint8_t reverseAutoMuteEnabled=0;
+#endif // BH default until C1 settings arrive
+	uint8_t audioSystemReverseMuted = 0;            // Main loop state machine rigger
+	volatile uint8_t centerConsoleRxMsgData[6] = {0x0F, 0x7F, 0x80, 0x00, 0x00, 0x00}; // audio panel and volume status
+	uint8_t centerConsoleTxMsgData[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	CAN_TxHeaderTypeDef centerConsoleTxMsgHeader = {.IDE = CAN_ID_STD, .RTR = CAN_RTR_DATA, .StdId = 0x358, .DLC = 6};
+	uint32_t exitReverseAudioTime = 0;
+#endif
+//@netzmark MUTE_ON_REVERSE code - end
 

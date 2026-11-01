@@ -21,6 +21,15 @@
 	void saveToFilesystem(void);
 
 	void storage_init(void);
+	
+	/* Section added by @netzmark for "appendFloat" related to printf improvement - BEGIN */
+	void appendFloatRightAligned(char* result,
+	                             uint8_t* index,
+	                             uint8_t resultMaxLen,
+	                             float value,
+	                             uint8_t precision,
+	                             uint8_t fieldWidth);
+	/* Section added by @netzmark - END*/	
 
 	//sniffer function 24/08/2026 - BEGIN
 	#if defined(C1baccable) || defined(C2baccable) || defined(BHbaccable)

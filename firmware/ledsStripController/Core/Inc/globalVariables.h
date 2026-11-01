@@ -10,6 +10,11 @@
 	#include "compile_time_defines.h"
 	#include "stm32f0xx_hal.h"
 
+// ABS DTC storage capacity on C2; shared by declarations and definitions.
+#ifndef ABS_FAULTS_DTC_MAX
+#define ABS_FAULTS_DTC_MAX 20u
+#endif
+
 
 
 
@@ -23,7 +28,7 @@
 	#define ENGINE_NSC_DE_SOX_REGEN		4
 	#define ENGINE_SCR_HEATUP_STRATEGY	5
 
-	#define UART_BUFFER_SIZE DASHBOARD_MESSAGE_MAX_LENGTH + 1
+	#define UART_BUFFER_SIZE (DASHBOARD_MESSAGE_MAX_LENGTH + 5) // @netzmark: really necessary to get safely the full 28 characters on the large telematic screen
 
 	#define UART1_BUFFER_SIZE 9  //legth for schizzaforte messages
 
@@ -46,8 +51,6 @@
 	#define TIMING__C1____C2_STATUS_REQUEST_TIMEOUT_MS									1010	//msec
 	#define TIMING__C1____BH_STATUS_REQUEST_TIMEOUT_MS									TIMING__C1____C2_STATUS_REQUEST_TIMEOUT_MS+250	//msec
 
-	#define ABS_FAULTS_DTC_MAX	20	//ABS DTC kept by C2 (protocol in uart.h, FAULTS ABS PROTOCOL) //readFaults ABS 10/10/2026
-	#define ABS_FAULTS_REPLY_MSGS	3	//messages sent by C2 for each C2cmdAbsFaultsGet, 2 DTC each //readFaults ABS 10/10/2026
 	#define TIMING__C1____SERIAL_TIMEOUT_REPLY_MS										250		//msec
 	#define TIMING__C2_BH_SERIAL_TIMEOUT_REPLY_MS										TIMING__C1____SERIAL_TIMEOUT_REPLY_MS-50		//msec
 
@@ -164,10 +167,11 @@
 		extern uint8_t dashboard_menu_indent_level;
 		extern uint8_t maxHold_enabled;
 		extern uint8_t dashboard_main_menu_array_len;
-		extern uint8_t dashboard_main_menu_array[20][DASHBOARD_MESSAGE_MAX_LENGTH];
+		extern uint8_t dashboard_main_menu_array[20][30];
 		extern uint8_t setup_dashboardPageIndex;
-		extern uint8_t total_pages_in_setup_dashboard_menu;
-		extern uint8_t dashboard_setup_menu_array[32][DASHBOARD_MESSAGE_MAX_LENGTH]; //elm327 function 26/08/2026 - was [30] //DNA memory 18/10/2026 - was [31]
+		extern uint8_t reverseMuteFunctionEnabled;
+	extern uint8_t total_pages_in_setup_dashboard_menu;
+		extern uint8_t dashboard_setup_menu_array[33][30]; //elm327 function 26/08/2026 - was [30]
 
 		//extern uint8_t params_setup_dashboardPageIndex;
 		//extern uint8_t shownParamsArray[240];
@@ -194,16 +198,14 @@
 		extern uint8_t dashboardPageIndex; //to send message index - it changes when you press cruise control buttons
 		extern uint32_t last_sent_uds_parameter_request_Time; //stores last time we send a uds parameter request
 
+		extern uint8_t last_41A_raw_data[8];	// raw 0x41A frame data for diagnostic parameters
+
 		extern uint8_t dieselEngineRegenerationMode; //0=None, 1=DPF_REGEN_LO, 2=DPF_REGEN_HI, 3=NSC_DE_NOX_REGEN, 4=NSC_DE_SOX_REGEN, 5=SCR_HEATUP_STRATEGY
 
 		//
 		extern uint8_t cruiseControlDisabled;
-		//extern uint8_t ACC_Disabled;
-		//extern uint8_t ACC_engaged;
-		extern uint8_t ACC_status; 	//Legend: 0=Off, 1=Enabled, 2=Engaged, 3=EngagedBrakeOnly, 4=EngagedOverride, 5=Cancel, 6=SuggestionEngaged, 7=SuggestionOverride
-									//note: 5 is fired when acc is engaged and you press brake, so acc becomes not engaged
-									//note: 4 and 7 are fired when acc is engaged and you press accelerator
-
+		extern uint8_t ACC_Disabled;
+		extern uint8_t ACC_engaged;
 		extern uint8_t wheelPressedButtonID; //0x10= released, 0x20=strong speed decrease, 0x18=speed decrease, 0x00=strong speed increase, 0x08=speed increase, 0x90=RES, CC on/off=0x12
 		extern uint8_t  lastPressedWheelButton; //default value, means no button pressed on the wheel
 		extern uint32_t lastPressedWheelButtonTime;//stores the last time a wheel button was pressed, in msec from boot
@@ -305,6 +307,7 @@
 		extern uint32_t lastSentAutostartMsg;
 		extern uint8_t AutostartMsgCounter;
 		extern uint8_t brakeIntervention_ACC_ESC_ASR;
+		extern volatile uint8_t autostartActiveBurst; //@netzmark Autostart improvement
 
 		//CLOSE_WINDOWS
 		extern uint8_t function_close_windows_with_door_lock;
@@ -321,7 +324,7 @@
 		extern uint8_t RF_fob_number;
 
 		//QV_EXHAUST_FLAP_FUNCTION_ENABLED
-		extern uint8_t QV_exhaust_flap_function_enabled; //0=disabled, 1=enabled, 2=enabled + automatic with the drive style (D/R open, N/A close) //exhaust valves DR 11/10/2026
+		extern uint8_t QV_exhaust_flap_function_enabled;
 		extern uint8_t ForceQVexhaustValveOpened;
 		extern uint32_t lastSentQVexhaustValveMsgTime;
 		extern CAN_TxHeaderTypeDef forceQVexhaustValveMsgHeader[4];
@@ -334,20 +337,12 @@
 		extern uint32_t exhaustValveMosfetCommandTime; //time when mosfet was closed
 		extern uint8_t ChineseExhaustValveRequest; //0=no request, 'O'=open request, 'C'=Close request
 		extern uint8_t chineseValveIsOpened; //0=closed, 1=opened
+
 		extern uint8_t exhaustValvesDNAmode;		//drive style the valves were last set for, 0xFF=none //exhaust valves DR 11/10/2026
 		extern uint8_t exhaustValvesReassert;		//1=engine started again: the next drive style received sets the valves again //exhaust valves DR 11/10/2026
 		#define EXHAUST_VALVES_ENGINE_RUNNING_RPM 400	//above it the engine runs by itself (idle 700-900): valves are opened/closed only then, never while cranking. The closing at engine off stays at rpm 0 //exhaust valves rpm 400 11/10/2026
 		extern uint8_t exhaustValvesEngineRunning;	//1=rpm > 0 at the previous check //exhaust valves DR 11/10/2026
-		//DNA memory 18/10/2026 - the drive style in use is restored at the first engine start after the car slept
-		#define DNA_MEMORY_ENGINE_RUNNING_RPM 400	//above it the engine runs: the drive style is memorized, and restored after the car slept
-		#define DNA_MEMORY_SETTLE_MS 2000			//engine running for this long before restoring: the BCM sets its own start drive style first
-		#define DNA_MEMORY_RESTORE_HOLD_MS 10000	//no memorizing for this long after the command: BH is still moving the selector (7 s worst case)
-		extern uint8_t  dnaMemoryFunctionEnabled;	//0=disabled, 1=enabled. saved on flash (slot 33)
-		extern uint8_t  dnaMemoryStyle;			//drive style to restore (0x384 codes: 0x00 N, 0x08 D, 0x10 A, 0x30 R), 0xFF=none yet
-		extern volatile uint8_t dnaMemoryWakeUp;	//1=the car just woke up (set by lowConsume.c): read the setting again and arm the restore
-		extern uint8_t  dnaMemoryRestoreArmed;		//1=restore at the next engine start
-		extern uint32_t dnaMemoryEngineOnTime;		//when the engine was seen running, 0=not running
-		extern uint32_t dnaMemoryCommandTime;		//when the restore command was sent to BH, 0=none
+	extern uint8_t dnaMemoryFunctionEnabled;
 		extern uint8_t exhaustValvesOpenRequested; //1=the user wants the valves open, re-applied when the engine rotates again //exhaust valves memory 11/10/2026
 
 		//pumpForce test25/07/2026 - BEGIN
@@ -367,35 +362,18 @@
 		// faultsStateMachine:
 		//   0xFF=inattivo | 0=attende conf.sessione (50 03) | 1=attende ReadDTC resp
 		//   2=ricezione multiframe in corso | 3=lista DTC pronta | 4=TIMEOUT display
-		#define FAULTS_DTC_MAX 20
+		#define FAULTS_DTC_MAX 60 /* Stage C1e: 20 per ECU; ABS reserved, inactive */
 		extern uint8_t  faultsStateMachine;
 		extern uint8_t  faultsDTCcount;
-		extern float    brakeTravelStatus;	//brake pedal press percentage from 0x107 (raw*0.4), shown in show params //brake in show params 10/10/2026
-		extern uint8_t  parkMuteBrakeSent;	//last brake state sent to C2 for park mute: 0 released, 1 pressed, 0xFF to be sent again //park mute brake from C1 10/10/2026
-		extern uint16_t faultsDTCtotal;		//readFaults fix 05/10/2026 - all valid DTC in the response (faultsDTCcount keeps at most FAULTS_DTC_MAX)
 		extern uint8_t  faultsDTCsubmenuIndex;
 		extern uint8_t  faultsDTCbytes[FAULTS_DTC_MAX][3];
-		extern uint8_t  faultsRecord[4];		//readFaults fix 05/10/2026 - DTC record being assembled (was faultsRxBuffer[90])
-		extern uint8_t  faultsRecordFill;
-		#define FAULTS_STATUS_MASK 0x09		//readFaults fix 05/10/2026 - DTC status bits shown: 0x01 testFailed (present now) | 0x08 confirmedDTC (stored)
+		extern uint8_t  faultsRxBuffer[90];
 		extern uint16_t faultsRxExpected;
 		extern uint16_t faultsRxReceived;
 		extern uint8_t  faultsRxNextSN;
 		extern uint32_t faultsTimer;
-		extern CAN_TxHeaderTypeDef faultsTxHeader;	//ExtId 0x18DA40F1 (BODY) or 0x18DA10F1 (ECM), set by faultsStartEcuSession //readFaults ECM 10/10/2026
-		extern uint8_t  faultsTxData[8];
-		#define FAULTS_ECU_BODY 0	//readFaults ECM 10/10/2026
-		#define FAULTS_ECU_ECM  1	//readFaults ECM 10/10/2026
-		extern uint8_t  faultsEcu;			//ECU being read: FAULTS_ECU_BODY, then FAULTS_ECU_ECM if the list is not full //readFaults ECM 10/10/2026
-		extern uint8_t  faultsDTCbodyCount;	//faultsDTCbytes[0..faultsDTCbodyCount-1] come from BODY, the following ones from ECM //readFaults ECM 10/10/2026
-		#define FAULTS_ECU_ABS  2	//read by C2 on its bus, collected over uart //readFaults ABS 10/10/2026
-		extern uint8_t  faultsDTCecmEnd;		//faultsDTCbytes[faultsDTCbodyCount..faultsDTCecmEnd-1] come from ECM, the following ones from ABS //readFaults ABS 10/10/2026
-		extern uint8_t  faultsAbsNextIndex;	//next ABS DTC (index in the list of C2) asked with C2cmdAbsFaultsGet //readFaults ABS 10/10/2026
-		#define FAULTS_ABS_INBOX_LEN 4	//readFaults ABS 10/10/2026
-		extern volatile uint8_t faultsAbsInbox[FAULTS_ABS_INBOX_LEN][UART_BUFFER_SIZE];	//C1cmdAbsFaultsReply messages, filled by the uart interrupt //readFaults ABS 10/10/2026
-		extern volatile uint8_t faultsAbsInboxHead, faultsAbsInboxTail; //readFaults ABS 10/10/2026
-		extern uint8_t  faultsResponsePending;          // readFaults fix 05/10/2026
-		extern uint8_t  snifferLastFaultsState;         // readFaults debug 05/10/2026
+		extern CAN_TxHeaderTypeDef faultsBodyTxHeader;
+		extern uint8_t  faultsBodyTxData[8];
 		//readFaults 12/08/2026 - END
 
 	#endif
@@ -422,8 +400,6 @@
 		extern uint32_t last_sent_tester_presence_msg_time; //stores time in millisec. from last sent presence. used when dyno is enabled
 		extern uint32_t DynoStateMachineLastUpdateTime; //stores time (in milliseconds from power on) when Park Assist button press was read last time
 		extern uint8_t ParkAssistButtonPressCount; //stores number of times this message field was received
-		extern uint8_t snifferDynoLastModeEnabled;		//dyno debug 04/10/2026
-		extern uint8_t snifferDynoLastStateMachine;	//dyno debug 04/10/2026
 
 		//FRONT_BRAKE_FORCER
 		extern uint32_t last_sent_rear_brake_msg_time;
@@ -431,11 +407,11 @@
 		extern CAN_TxHeaderTypeDef rearBrakeMsgHeader[4];
 		extern uint8_t rearBrakeMsgData[4][8]; //from last to first we have: diag session, tester present, IO Control - Short Term Adjustment(disable front brakes) (periodic)
 
-		extern uint8_t reverseGearActive;
-		extern uint8_t parkSensorsFunctionStatus; //0=off, 1=ON active, 2=ON inactive, 3=ON disabled
+		//extern uint8_t reverseGearActive;
+		extern uint8_t parkSensorsFunctionStatus; //0=park sensors off, anything else=on
 		extern uint8_t parkSensorsLedStatus; //0=off, 1=continuous, 2=blink
 
-		// Park Mute - the front chime is silenced by simulating a press of the park sensors
+		// @netzmark PDC auto disable - the front chime is silenced by simulating a press of the park sensors
 		// button (0x5B0) when the brake is pressed firmly while the sensors are beeping. See functions_C2baccable.c
 		extern volatile uint8_t  pdc_is_beeping;		//1=front sensors in alarm (from 0x3E7)
 		extern volatile uint8_t  pdc_auto_disabled;		//1=the park sensors are off because WE switched them off
@@ -444,14 +420,13 @@
 		extern volatile uint32_t last_pdc_shot_time;	//when the push was sent
 		extern uint8_t pdcMsgData[8];
 		extern CAN_TxHeaderTypeDef pdcMsgHeader;
-		extern uint32_t parkMuteReverseStartTime;		//when the reverse gear was seen engaged, 0=not engaged //park mute reverse fix 13/10/2026
-		extern uint32_t parkMuteLastEvaluationTime;	//last time parkMuteEvaluate() ran //park mute brake from C1 10/10/2026
-		extern volatile uint8_t parkMuteBrakePressed;	//1=brake pressed, as sent by C1 (0x107 is not on the C2 bus) //park mute brake from C1 10/10/2026
-
-		//readFaults ABS 10/10/2026 - ABS faults read by C2 for C1 (protocol in uart.h, FAULTS ABS PROTOCOL)
+			//readFaults ABS 10/10/2026 - ABS faults read by C2 for C1 (protocol in uart.h, FAULTS ABS PROTOCOL)
 		// absFaultsState: 0xFF never started | 0=waits 50 03 | 1=waits ReadDTC reply | 2=multiframe | 3=list ready | 4=failed
 		extern uint8_t  absFaultsState;
 		extern volatile uint8_t absFaultsStartRequest;	//1=C1 asked a new reading (set by the uart interrupt)
+		extern volatile uint8_t absFaultsRequestId;
+		extern volatile uint8_t absFaultsGetRequestId;
+		extern volatile uint8_t absFaultsGetIndexRequest;
 		extern volatile uint8_t absFaultsGetIndex;		//index asked by C1 with C2cmdAbsFaultsGet, 0xFF=none (set by the uart interrupt)
 		extern uint8_t  absFaultsDTCcount;				//DTC kept, at most ABS_FAULTS_DTC_MAX
 		extern uint16_t absFaultsDTCtotal;				//valid DTC in the ABS answer, also beyond ABS_FAULTS_DTC_MAX
@@ -467,7 +442,7 @@
 		extern uint8_t  absFaultsTxData[8];
 		#define ABS_FAULTS_STATUS_MASK 0x09	//same DTC status bits as FAULTS_STATUS_MASK on C1: 0x01 testFailed | 0x08 confirmedDTC
 		extern uint8_t  snifferAbsFaultsLastState;	//last absFaultsState traced (0x2300)
-	#endif
+#endif
 
 	#if defined(BHbaccable)
 		//DNA memory 18/10/2026 - drive style set by BH moving the DNA selector (0x256), on request of C1
@@ -546,8 +521,6 @@
 
 	extern uint32_t currentRpmSpeed;	//used by C1baccable
 	extern uint8_t currentGear; 		//used by C1baccable and BHbaccable
-										//currentGear on BH(0x3E8) and C1(0x5A8): 	0=N, 1-9=1-9, 0xD=P, 0xE=R, 0xF=Undefined
-										//currentGear on C1(msg 0x2EF): 			0=N, 1-6 e 8-10=1-9, 0x7=R, 0xF=Undefined
 
 	// Storage for status and received message buffer
 	extern CAN_RxHeaderTypeDef rx_msg_header;  //msg header
@@ -560,37 +533,22 @@
 	extern uint8_t DynoModeEnabledOnMaster; //status of dyno in master board. tells if dyno is active
 	extern uint32_t last_4wd_disabled_overlay_time; // 4wd constraint relax change 24/08/2026
 	extern uint8_t  show_4wd_disabled_overlay;       // 4wd constraint relax change 24/08/2026
-	#if defined(C1baccable)
-		extern uint8_t snifferLast4wdDisabled;			//dyno debug 04/10/2026
-		extern uint8_t snifferLastDynoEnabledOnMaster;	//dyno debug 04/10/2026
-	#endif
 
 	//sniffer function 24/08/2026 - BEGIN
 	//raw can frames are streamed to usb cdc with a fixed 16 byte layout:
-	//  byte 0     : 0xA0 | DLC          (0xA = received frame, DLC 0..8; 0xAF = frames lost marker)
-	//               0xB0 | DLC          (0xB = frame sent on the bus by baccable, DLC 0..8) //sniffer tx/debug 27/09/2026
-	//               0xC0 | N            (0xC = debug frame, baccable internal elaboration, N = valid values 0..2) //sniffer tx/debug 27/09/2026
+	//  byte 0     : 0xA0 | DLC          (0xA = start nibble, DLC 0..8; 0xAF = frames lost marker)
 	//  byte 1..3  : timestamp, 24 bit little endian (currentTime, ms)
 	//  byte 4..7  : can id, 32 bit little endian
-	//               debug frame: byte 4..5 = code point id (uint16 little endian), byte 6..7 = 0
 	//  byte 8..15 : payload, zero padded above DLC
-	//               debug frame: byte 8..11 = value 1, byte 12..15 = value 2 (uint32 little endian, 0 if unused)
-	//all three high nibbles 0xA, 0xB, 0xC are valid frame starts for the receiving app's synchronization.
 	//gated to C1/C2/BH only: ACT_AS_CANABLE has no menu to trigger the function and does not need the ram
 	#if defined(C1baccable) || defined(C2baccable) || defined(BHbaccable)
 		#define SNIFFER_FRAME_SIZE					16		//bytes per frame
-		#define SNIFFER_FRAME_COUNT					64		//frames kept in ram
-		#define SNIFFER_BUFFER_SIZE					(SNIFFER_FRAME_SIZE*SNIFFER_FRAME_COUNT) //1024 bytes, power of two: index wrap done with a mask
+		#define SNIFFER_FRAME_COUNT					16		//frames kept in ram
+		#define SNIFFER_BUFFER_SIZE					(SNIFFER_FRAME_SIZE*SNIFFER_FRAME_COUNT) //256 bytes, power of two: index wrap done with a mask
 		#define SNIFFER_BUFFER_MASK					(SNIFFER_BUFFER_SIZE-1)
-		#if (SNIFFER_BUFFER_SIZE & SNIFFER_BUFFER_MASK) != 0
-			#error "SNIFFER_BUFFER_SIZE must be a power of two"
-		#endif
-		#define SNIFFER_USB_PACKET					64		//usb full speed bulk packet size: a partial chunk below this waits SNIFFER_FLUSH_TIMEOUT_MS
-		#define SNIFFER_USB_CHUNK					(SNIFFER_BUFFER_SIZE/2)	//max bytes handed to the usb endpoint in one transfer, straight from the ring (no copy): the device library splits it into packets //sniffer tx/debug 04/10/2026
+		#define SNIFFER_USB_CHUNK					64		//usb cdc linear tx buffer size (TX_BUF_SIZE), holds exactly 4 frames
 		#define SNIFFER_FLUSH_TIMEOUT_MS			20		//flush a partial buffer after this idle time, to keep latency low on a quiet bus
-		#define SNIFFER_START_NIBBLE				0xA0	//high nibble marking the first byte of a frame received from the bus
-		#define SNIFFER_TX_NIBBLE					0xB0	//high nibble marking the first byte of a frame sent on the bus by baccable //sniffer tx/debug 27/09/2026
-		#define SNIFFER_DEBUG_NIBBLE				0xC0	//high nibble marking the first byte of a debug frame (baccable internal elaboration) //sniffer tx/debug 27/09/2026
+		#define SNIFFER_START_NIBBLE				0xA0	//high nibble marking the first byte of a frame
 		#define SNIFFER_OVERFLOW_MARKER				0xAF	//invalid DLC 15: frame carrying the number of lost frames
 		#define SNIFFER_CAN_FRAMES_PER_LOOP			3		//bxCAN RX FIFO0 depth on stm32F072: never more than this pending
 		//Also doubles as the disconnect timeout once the host has been seen: snifferActivationTime is refreshed on
@@ -621,21 +579,7 @@
 		extern uint16_t snifferRingCount;			//bytes currently stored
 		extern uint16_t snifferDroppedFrames;		//frames lost since last overflow marker
 		extern uint32_t snifferLastFlushTime;
-		extern uint16_t snifferInflightBytes;		//bytes of the ring handed to the usb endpoint and not yet confirmed sent: released by snifferFlush() when TxState clears //sniffer tx/debug 04/10/2026
 		extern USBD_HandleTypeDef hUsbDeviceFS;	//declared in usb_device.c, needed to check TxState before a non blocking send
-
-		//sniffer tx/debug 27/09/2026 - BEGIN
-		//Declared here rather than in functions_Common.h because they are used from every module (can.c included),
-		//and globalVariables.h is the header all of them already see.
-		void snifferPushTxFrame(CAN_TxHeaderTypeDef *snifferTxHeader, uint8_t *snifferTxData);
-		void snifferPushDebug(uint16_t snifferPointId, uint8_t snifferValuesCount, uint32_t snifferValue1, uint32_t snifferValue2);
-		//Debug trace points: every call site passes its own hardcoded uint16_t id, to be searched in the sources while
-		//reading a sniff. While the sniffer is off each one costs a single test of snifferInUse. Main loop only:
-		//never use them inside an interrupt handler (uart callbacks included), the ring buffer is not interrupt safe.
-		#define SNIFFER_DEBUG(id)					do{ if(snifferInUse) snifferPushDebug((id),0,0,0); }while(0)
-		#define SNIFFER_DEBUG1(id,v1)				do{ if(snifferInUse) snifferPushDebug((id),1,(uint32_t)(v1),0); }while(0)
-		#define SNIFFER_DEBUG2(id,v1,v2)			do{ if(snifferInUse) snifferPushDebug((id),2,(uint32_t)(v1),(uint32_t)(v2)); }while(0)
-		//sniffer tx/debug 27/09/2026 - END
 
 		#ifdef DEBUG_CAN_RX_SIMULATION
 			extern uint32_t debugSimulatedMsgLastInjectTime;
@@ -648,11 +592,6 @@
 		#ifdef DEBUG_START_ELM327 // bench test with no vehicle connected
 			extern uint8_t  debugElm327AutoStarted;	//0 until the 10 second auto-start has fired once
 		#endif
-	#else
-		//sniffer tx/debug 27/09/2026 - no sniffer on this build: trace points compile to nothing
-		#define SNIFFER_DEBUG(id)					do{ }while(0)
-		#define SNIFFER_DEBUG1(id,v1)				do{ }while(0)
-		#define SNIFFER_DEBUG2(id,v1,v2)			do{ }while(0)
 	#endif
 
 	//elm327 function 26/08/2026 - BEGIN
@@ -723,6 +662,7 @@
 	extern uint8_t parkMirrorOperativePositionNotStored;
 	extern uint32_t exitReverseTime; //@netzmark parkingMirror returning delay
 	extern uint32_t neutralGearEntryTime; //park mirror - moment Neutral (currentGear==0x00) was entered, 0 when not in Neutral
+	extern uint32_t exitReverseTime; //@netzmark parkingMirror returning delay
 
 	//HAS_FUNCTION_ENABLED
 	extern uint8_t HAS_function_enabled;
@@ -740,6 +680,38 @@
 	extern uint8_t usbConnectedToBH;
 
 
+
+
+	// @netzmark PDC code - begin
+	//PDC_AUTO_DISABLE
+	#if defined(C2baccable)
+		extern volatile uint8_t pdc_state_disabled;
+		extern volatile uint8_t pdc_is_beeping;
+		extern volatile uint8_t pdc_auto_disabled;
+		extern volatile uint8_t requestToTogglePDC;
+		extern volatile uint8_t reverseGearActive;
+		extern uint8_t pdcMsgData[8];
+		extern CAN_TxHeaderTypeDef pdcMsgHeader;
+		extern volatile int pdc_send_counter;
+		extern volatile uint32_t last_pdc_shot_time;
+		extern volatile uint8_t vehicle_is_moving;
+	#endif
+	// @netzmark PDC code - end
+
+	// @netzmark MUTE_ON_REVERSE code - begin
+	//MUTE_ON_REVERSE
+	#if defined(BHbaccable)
+		extern volatile uint32_t audioSystemMuteFeedbackTime; // Last valid 0x5BE mute status
+		extern volatile uint8_t bhHuTextRestoreRequest; // BH-only one-shot request
+		extern volatile uint8_t audioSystemMuted;             // 0 = play, 1 = muted (updated via CAN 0x5BE)
+		extern uint8_t reverseAutoMuteEnabled; // BH: synchronized from C1, defaults ON
+		extern uint8_t audioSystemReverseMuted;               // 0 = idle, 1 = muted by us, 2 = skipped (manual mute active)
+		extern volatile uint8_t centerConsoleRxMsgData[6];    // stores pure radio panel status (updated via CAN 0x358)
+		extern uint8_t centerConsoleTxMsgData[6];             // buffer used to modify and send the CAN injection message
+		extern CAN_TxHeaderTypeDef centerConsoleTxMsgHeader;  // CAN TX header definition for 0x358 message
+		extern uint32_t exitReverseAudioTime;                 // countdown timer for audio restoration hysteresis
+	#endif
+	//@netzmark MUTE_ON_REVERSE code - end
 
 
 #endif /* INC_GLOBALVARIABLES_H_ */

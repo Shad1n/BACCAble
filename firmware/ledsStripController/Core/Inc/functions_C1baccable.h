@@ -18,6 +18,8 @@
 	void elm327UsbStartIfRequested(void);
 	void elm327CheckActivationTimeout(void);
 	void setSchizzaforteMap(uint8_t map);
+	void exhaustValvesToggle(void);
+	void exhaustValvesOnDNAmode(uint8_t mode);
 	void C1baccablePeriodicCheck(void);
 	uint8_t mapCommandNotApplied(void);
 
@@ -26,11 +28,14 @@
 	void sendParamsSetupDashboardPageToSlaveBaccable(void);
 	void sendDashboardPageToSlaveBaccable(void);
 	float getNativeParam(uint8_t paramId);
-	void buildLineWithFormat(const char* template, float values[2], const uint8_t paramId[2], char* result);
+	//@netzmark - to confirm
+	//void buildLineWithFormat(const char* template, float *values, const uint8_t *paramId, char* result);
+	void buildLineWithFormat(const char* template, const uint8_t *paramId, char* result);
 	uint8_t removePatterns(char *str);
 	uint32_t getFreeRAM(void);
 	void clearDashboardBaccableMenu(void);
 	float scaleVolume(uint8_t vol);
+	uint8_t scaleColorSet(uint8_t col);
 	uint8_t saveOnflash(void);
 	uint8_t resetStatisticsOnFlash();
 	uint8_t saveStatisticsOnFlash(void);
@@ -44,9 +49,8 @@
 	uint8_t getNextVisibleParam(uint8_t curIndex);
 	uint8_t getPreviousVisibleParam(uint8_t curIndex);
 	void nativeMaxHoldUpdate(uint8_t paramId);
-	void faultsStartEcuSession(uint8_t ecu); //readFaults ECM 10/10/2026
-	void faultsEcuEnded(uint8_t failed); //readFaults ECM 10/10/2026
-	void faultsAbsProcess(void); //readFaults ABS 10/10/2026
-	void exhaustValvesToggle(void); //exhaust valves memory 11/10/2026
-	void exhaustValvesOnDNAmode(uint8_t mode); //exhaust valves DR 11/10/2026
+	/* Gaucho DTC integration entry points; implementations added in a later stage. */
+	void faultsStartEcuSession(uint8_t ecu);
+	void faultsEcuEnded(uint8_t failed);
+	void faultsAbsProcess(void);
 #endif /* INC_FUNCTIONS_C1BACCABLE_H_ */

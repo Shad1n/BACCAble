@@ -167,6 +167,25 @@ int main(void){
 			//can_tx(&testMsgHeader, testMsgData);
 		#endif
 
+		// Stage G v3.9.2: service one pending C1 CAN frame before the periodic
+		// tasks. This bounds button-event queueing behind background work while
+		// preserving the original late-loop CAN handler for all targets.
+		// ELM327/elmlink owns the RX FIFO when active; never consume its replies.
+		#if defined(C1baccable)
+		if(!elmlink_is_enabled() && is_can_msg_pending(CAN_RX_FIFO0)){
+			if(can_rx(&rx_msg_header, rx_msg_data) == HAL_OK){
+				lastReceivedCanMsgTime=currentTime;
+				if(rx_msg_header.RTR == CAN_RTR_DATA){
+					switch(rx_msg_header.IDE){
+						case CAN_ID_EXT: processingExtendedMessage(); break;
+						case CAN_ID_STD: processingStandardMessage(); break;
+						default: break;
+					}
+				}
+			}
+		}
+		#endif
+
 		#if defined(C1baccable)
 			//elm327 function 26/08/2026 - with a host actually talking to the interpreter the baccable steps
 			//aside completely: no UDS requests of its own on the bus, no traffic towards the other two chips

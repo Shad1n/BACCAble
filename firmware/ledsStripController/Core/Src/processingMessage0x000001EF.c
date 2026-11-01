@@ -6,10 +6,12 @@
  */
 
 #include "processingMessage0x000001EF.h"
+#include "stageg_ign_diag.h"
 
 void processingMessage0x000001EF(){
 	#if defined(C1baccable)
 		if(rx_msg_header.DLC==8){
+            stageg_ign_diag_note_rfhub((uint8_t)(rx_msg_data[0] & 0x0Fu));
 
 			//avoid thief to simulate engine rotation. As soon as RFHUB tells ignition is not in RUN reset engineOn status stored inside baccable
 			if((rx_msg_data[0] & 0x0F)!=0x08) engineOnSinceMoreThan5seconds=0;
@@ -47,14 +49,16 @@ void processingMessage0x000001EF(){
 
 				switch(closeWindowsRequest){
 					case 1: //we have to close the windows
-						if(currentTime-doorCloseTime>4000){ //if at least 3,5 seconds from door closure is passed
+						//if(currentTime-doorCloseTime>3500){ //if at least 3,5 seconds from door closure is passed
+						if(currentTime-doorCloseTime>4000){ // @netzmark: for my Stelvio(MY21) it must be min 4000 to pass the mirrors folding or - it is ignored.
 							//send message to close the windows
 							rx_msg_data[1]= RF_fob_number | 0x01; //set proper key fob and set request to close all windows (0x01)
 							rx_msg_data[2]= RF_requestor; //set requestor
 							rx_msg_data[7] = calculateCRC(rx_msg_data,rx_msg_header.DLC); //update checksum
 							can_tx((CAN_TxHeaderTypeDef *)&rx_msg_header, rx_msg_data); //send msg
 
-							if(currentTime-doorCloseTime>9000){ //after 5 seconds of windows movement, they should be closed
+							//if(currentTime-doorCloseTime>8000){ //after 4,5 seconds of windows movement, they should be closed
+							if(currentTime-doorCloseTime>9000){ // @netzmark: for my Stelvio(MY21) it must be min 5sec to close the windows completely
 								closeWindowsRequest=0;
 
 								if(doorLocksRequestsCounter>=2){ //if windows Ajar is requested,
@@ -68,7 +72,8 @@ void processingMessage0x000001EF(){
 						break;
 					case 2: //we have to set the windows Ajar
 						//send message to open the windows
-						if(currentTime-doorCloseTime>11000){
+						//if(currentTime-doorCloseTime>8500){
+						if(currentTime-doorCloseTime>11000){ // @netzmark: for my Stelvio(MY21) it must be min 11000 (2000ms) or - it is ignored
 							rx_msg_data[1]= RF_fob_number; //set proper key fob
 							rx_msg_data[2]= 0xB0 | RF_requestor; //set request to open all windows (0xB0) and requestor
 							rx_msg_data[7] = calculateCRC(rx_msg_data,rx_msg_header.DLC); //update checksum
@@ -76,7 +81,8 @@ void processingMessage0x000001EF(){
 						}
 
 
-						if(currentTime-doorCloseTime>11550){ //if at least 450msec from windows closed is passed, windows shoud be opened for at least 3 centimeters
+						//if(currentTime-doorCloseTime>8900){ //if at least 300msec from windows closed is passed, windows shoud be opened for at least 3 centimeters
+						if(currentTime-doorCloseTime>11450){ // @netzmark: for my Stelvio(MY21) it must be 450ms for (rears open for 2cm, front not at all - acceptable)
 							closeWindowsRequest=0; //task completed
 							doorLocksRequestsCounter=0;
 						}

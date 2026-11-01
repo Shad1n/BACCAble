@@ -1,4 +1,23 @@
 #include "uart.h"
+#if defined(C1baccable)
+#include "abs_c1_inbox.h"
+#include "abs_c1_service.h"
+#include "dna_stageg.h"
+#endif
+/* Decode two uppercase ASCII hex characters without changing UART framing. */
+#if defined(C2baccable)
+static int abs_uart_parse_id(const uint8_t *p, uint8_t *value) {
+    uint8_t a, b;
+    if (!p || !value) return 0;
+    a = (p[0] >= '0' && p[0] <= '9') ? p[0]-'0' :
+        (p[0] >= 'A' && p[0] <= 'F') ? p[0]-'A'+10 : 255;
+    b = (p[1] >= '0' && p[1] <= '9') ? p[1]-'0' :
+        (p[1] >= 'A' && p[1] <= 'F') ? p[1]-'A'+10 : 255;
+    if (a > 15 || b > 15) return 0;
+    *value = (uint8_t)((a << 4) | b);
+    return 1;
+}
+#endif /* C2baccable */
 #include "stm32f0xx_hal.h"
 #include "main.h"
 //#include "globalVariables.h"
@@ -16,6 +35,25 @@ typedef struct {
 SendQueue queue_instance= {0};
 SendQueue *tx_queue = &queue_instance;
 
+/* USART2 HAL interrupt TX must not reference a reusable queue slot. */
+static volatile uint8_t uart2_direct_tx_owned = 0u;
+#if defined(C1baccable) || defined(C2baccable) || defined(BHbaccable)
+static uint8_t uart2_tx_snapshot[UART_BUFFER_SIZE];
+static uint8_t uart2_hal_tx_start(const uint8_t *source) {
+    uint8_t started = 0u;
+    uint32_t mask = __get_PRIMASK();
+    __disable_irq();
+    if (!uart2_direct_tx_owned && __HAL_UART_GET_FLAG(&huart2, UART_FLAG_TC) &&
+        (huart2.State == HAL_UART_STATE_READY || huart2.State == HAL_UART_STATE_BUSY_RX)) {
+        memcpy(uart2_tx_snapshot, source, UART_BUFFER_SIZE);
+        started = (HAL_UART_Transmit_IT(&huart2, uart2_tx_snapshot, UART_BUFFER_SIZE) == HAL_OK);
+    }
+    __set_PRIMASK(mask);
+    return started;
+}
+#endif /* C1baccable || C2baccable || BHbaccable */
+
+
 
 
 uint32_t last_sent_serial_msg_time=0;
@@ -30,6 +68,8 @@ uint8_t rxBuffer[UART_BUFFER_SIZE]; //buffer to receive the message from uart
 	uint8_t rxBufferUart1[UART1_BUFFER_SIZE]; //buffer to receive the message from uart (schizzaForte)
 	SendQueue queue_instance_uart1= {0};
 	SendQueue *tx_queue_uart1 = &queue_instance_uart1;
+	/* Stable storage for the duration of interrupt-driven USART1 TX. */
+	static uint8_t uart1_tx_snapshot[UART1_BUFFER_SIZE];
 
 #endif
 
@@ -202,6 +242,12 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 
 						#if defined(C1baccable)
 							switch(rxBuffer[1]){
+                                case C1cmdAbsFaultsReply:
+                                    /* Do not decode DTCs in the UART interrupt.
+                                     * Stage C2 integration: queued only; not yet activated. */
+                                    (void)abs_c1_inbox_push_isr(rxBuffer);
+                                    break;
+
 								case C1cmdForceFrontBrake:
 									front_brake_forced=1; //update status
 									launch_assist_enabled=1; //enable launch assist
@@ -245,15 +291,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 									usbConnectedToBH=0;
 									usbConnectedToSlave=usbConnectedToC2;
 									break;
-								case C1cmdAbsFaultsReply: //ABS faults from C2: only copied here, decoded in the main loop (faultsAbsProcess) //readFaults ABS 10/10/2026
-									{
-										uint8_t next=(uint8_t)((faultsAbsInboxHead+1)%FAULTS_ABS_INBOX_LEN);
-										if(next!=faultsAbsInboxTail){ //full: dropped, C1 asks the same index again
-											for(uint8_t i=0; i<UART_BUFFER_SIZE; i++) faultsAbsInbox[faultsAbsInboxHead][i]=rxBuffer[i];
-											faultsAbsInboxHead=next;
-										}
-									}
-									break;
 								//sniffer function 24/08/2026 - END
 								default:
 									break;
@@ -295,7 +332,31 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 								case C2cmdToggleHas: //request to press HAS button for more consecutive messages
 									HAS_buttonPressRequested=5;
 									break;
-								case C2cmdGetStatus:
+								case C2cmdAbsFaultsStart: {
+					/* Transaction id is ASCII hex at offsets 2..3. */
+					uint8_t parsedId;
+					if (abs_uart_parse_id(rxBuffer + 2, &parsedId)) {
+						absFaultsRequestId = parsedId;
+						absFaultsStartRequest = 1;
+						/* Invalidate pending Get from previous transaction. */
+						absFaultsGetIndex = 0xFF;
+					}
+					break;
+				}
+				case C2cmdAbsFaultsGet: {
+					/* The sender checks the transaction again before replying. */
+					uint8_t parsedId, parsedIndex;
+					if (abs_uart_parse_id(rxBuffer + 2, &parsedId) &&
+						abs_uart_parse_id(rxBuffer + 4, &parsedIndex) &&
+						parsedIndex <= ABS_FAULTS_DTC_MAX &&
+						parsedId == absFaultsRequestId) {
+						absFaultsGetRequestId = parsedId;
+						absFaultsGetIndexRequest = parsedIndex;
+						absFaultsGetIndex = parsedIndex;
+					}
+					break;
+				}
+				case C2cmdGetStatus:
 									//nothing to do, since we just need to set weCanSendAMessageReply
 									break;
 								case C2cmdFunctParkSensorsMuteDisabled: //park sensors mute disabled
@@ -303,18 +364,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 									break;
 								case C2cmdFunctParkSensorsMuteEnabled: //park sensors mute enabled
 									parkSensorsMuteFunctionEnabled = 1;
-									break;
-								case C2cmdParkMuteBrakeReleased: //brake released, from C1 //park mute brake from C1 10/10/2026
-									parkMuteBrakePressed = 0;
-									break;
-								case C2cmdParkMuteBrakePressed: //brake pressed, from C1 //park mute brake from C1 10/10/2026
-									parkMuteBrakePressed = 1;
-									break;
-								case C2cmdAbsFaultsStart: //C1 asks to read the ABS faults: started in the main loop (absFaultsProcess) //readFaults ABS 10/10/2026
-									absFaultsStartRequest = 1;
-									break;
-								case C2cmdAbsFaultsGet: //C1 asks the ABS faults from index rxBuffer[2]-'A': answered in the main loop //readFaults ABS 10/10/2026
-									if(rxBuffer[2]>='A' && rxBuffer[2]<('A'+ABS_FAULTS_DTC_MAX)) absFaultsGetIndex = (uint8_t)(rxBuffer[2]-'A');
 									break;
 								default:
 									break;
@@ -346,8 +395,17 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 									function_park_mirror=1;
 									storeCurrentParkMirrorPosition=1;
 									break;
-								case BHcmdDnaMemoryRestore: //set the drive style rxBuffer[2]: started in the main loop (BHperiodicCheck) //DNA memory 18/10/2026
-									if(rxBuffer[2]=='A' || rxBuffer[2]=='N' || rxBuffer[2]=='D' || rxBuffer[2]=='R') dnaRestoreRequest=rxBuffer[2];
+								case BHcmdReverseMuteEnabled:
+                                    reverseAutoMuteEnabled=1;
+                                    break;
+                                case BHcmdReverseMuteDisabled:
+                                    reverseAutoMuteEnabled=0;
+                                    break;
+                                case BHcmdHuTextRestore:
+									bhHuTextRestoreRequest = 1;
+									break;
+							case BHcmdDnaMemoryRestore:
+									if(rxBuffer[2]=='A'||rxBuffer[2]=='N'||rxBuffer[2]=='D'||rxBuffer[2]=='R') dnaRestoreRequest=rxBuffer[2];
 									break;
 								default:
 							}
@@ -363,7 +421,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 							if(ESCandTCinversion){ //if esc/tc is active, don't show baccable menu
 								requestToSendOneFrame=0;
 							}else{
-								if (requestToSendOneFrame<=2) requestToSendOneFrame +=1;//Send one frame
+								// Keep only the current transmission and one latest-page refresh.
+                                // A new page must not queue multiple obsolete full display cycles.
+                                // The BH snapshot is refreshed at the next frame-zero boundary.
+                                if (requestToSendOneFrame == 0) requestToSendOneFrame = 1;
+                                else if (requestToSendOneFrame == 1) requestToSendOneFrame = 2;
 							}
 							weCanSendAMessageReply=currentTime;
 							onboardLed_blue_on();
@@ -425,6 +487,9 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 							if(rxBuffer[1]==C1BHcmdStopShowRaceScreen){
 								ESCandTCinversion=0;
 							}
+							#if defined(C1baccable)
+							if(rxBuffer[1]==C1BHcmdDnaManualSelection) dna_stageg_note_manual_selection();
+							#endif
 							onboardLed_blue_on();
 						#endif
 						break;
@@ -492,7 +557,6 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart){
 	if (huart->Instance == USART2){
         //message sent. what do we do?
     	onboardLed_blue_on(); //successfully sent
-		uart2ReceiverOn(); //off while we were transmitting (see uart2TransmitQueued) //uart tx storm fix 11/10/2026
     }
 
 	#if defined(C1baccable)
@@ -518,31 +582,44 @@ void pauseUart(UART_HandleTypeDef *huart){
 	//__HAL_UART_DISABLE(huart);
 }
 
+/* Cancel only an idle receive operation; never overwrite an active HAL TX. */
+static uint8_t uart_rx_reset_idle(UART_HandleTypeDef *huart) {
+    if (huart->State == HAL_UART_STATE_BUSY_TX ||
+        huart->State == HAL_UART_STATE_BUSY_TX_RX) return 0u;
+    __HAL_UART_DISABLE_IT(huart, UART_IT_RXNE);
+    __HAL_UART_DISABLE_IT(huart, UART_IT_PE);
+    __HAL_UART_DISABLE_IT(huart, UART_IT_ERR);
+    huart->RxXferCount = 0u;
+    huart->RxXferSize = 0u;
+    huart->pRxBuffPtr = NULL;
+    huart->State = HAL_UART_STATE_READY;
+    return 1u;
+}
+
 //wake up serial line after pause
 void restartUart(UART_HandleTypeDef *huart){
-	syncObtained = 0; // sync lost
-	// Clear RXNE by flushing the data register
-	__HAL_UART_CLEAR_FLAG(huart,UART_CLEAR_FEF | UART_CLEAR_NEF | UART_CLEAR_OREF | UART_CLEAR_PEF);
-	__HAL_UART_FLUSH_DRREGISTER(huart);
-
-	//__HAL_UART_ENABLE(huart);
-
-	// Reset HAL internal state
-	huart->ErrorCode	= HAL_UART_ERROR_NONE;
-	huart->State		= HAL_UART_STATE_READY;
-
-	#if defined(C1baccable)
-		if (huart->Instance == USART1) {
-
-			HAL_UART_Receive_IT(huart, &rxBufferUart1[0], 1); //restart receiving one byte
-			last_sent_serial_to_schizzaForte_msg_time=currentTime; //avoid to send message in the same moment when interrupt was restarted
-		}
-	#endif
-
-	if (huart->Instance == USART2) {
-		HAL_UART_Receive_IT(huart, &rxBuffer[0], 1);  //restart receiving one byte
-		last_sent_serial_msg_time=currentTime; //avoid to send message in the same moment when interrupt was restarted
-	}
+    uint32_t mask = __get_PRIMASK();
+    __disable_irq();
+    if ((huart->Instance == USART2 && uart2_direct_tx_owned) ||
+        !uart_rx_reset_idle(huart)) {
+        __set_PRIMASK(mask);
+        return;
+    }
+    syncObtained = 0;
+    __HAL_UART_CLEAR_FLAG(huart, UART_CLEAR_FEF | UART_CLEAR_NEF | UART_CLEAR_OREF | UART_CLEAR_PEF);
+    __HAL_UART_FLUSH_DRREGISTER(huart);
+    huart->ErrorCode = HAL_UART_ERROR_NONE;
+#if defined(C1baccable)
+    if (huart->Instance == USART1) {
+        (void)HAL_UART_Receive_IT(huart, &rxBufferUart1[0], 1);
+        last_sent_serial_to_schizzaForte_msg_time = currentTime;
+    }
+#endif
+    if (huart->Instance == USART2) {
+        (void)HAL_UART_Receive_IT(huart, &rxBuffer[0], 1);
+        last_sent_serial_msg_time = currentTime;
+    }
+    __set_PRIMASK(mask);
 }
 
 
@@ -554,103 +631,63 @@ void restartUart(UART_HandleTypeDef *huart){
 	//with HAL_BUSY and the port would stay deaf for good. It also waits out any transmission already started
 	//by the normal queue (HAL_UART_Transmit_IT), otherwise the two messages would interleave.
 	//Every wait has a guard counter: this must never be able to block the main loop forever.
-	void uart_link_send(const uint8_t *frame, uint8_t len){
-		{
-			uint32_t guard = 200000;
-			while(((huart2.State == HAL_UART_STATE_BUSY_TX) ||
-			       (huart2.State == HAL_UART_STATE_BUSY_TX_RX)) && --guard){}
-		}
-		{
-			uint32_t guard = 200000;
-			while(!__HAL_UART_GET_FLAG(&huart2, UART_FLAG_TC) && --guard){}
-		}
+    /* Direct ELM writer and HAL interrupt TX share USART2. Reserve it
+     * before waiting for an already running HAL transfer to complete. */
+    uint8_t uart_link_send(const uint8_t *frame, uint8_t len) {
+        uint32_t mask, guard;
+        uint8_t ok = 1u;
+        if (!frame || !len || len > UART_BUFFER_SIZE || __get_IPSR() != 0u) return 0u;
+        mask = __get_PRIMASK(); __disable_irq();
+        if (uart2_direct_tx_owned) { __set_PRIMASK(mask); return 0u; }
+        uart2_direct_tx_owned = 1u;
+        __set_PRIMASK(mask);
+        guard = 200000u;
+        while ((huart2.State == HAL_UART_STATE_BUSY_TX || huart2.State == HAL_UART_STATE_BUSY_TX_RX) && --guard) {}
+        if (!guard) { ok = 0u; goto done; }
+        guard = 200000u;
+        while (!__HAL_UART_GET_FLAG(&huart2, UART_FLAG_TC) && --guard) {}
+        if (!guard) { ok = 0u; goto done; }
+        mask = __get_PRIMASK(); __disable_irq();
+        if (!uart_rx_reset_idle(&huart2)) {
+            __set_PRIMASK(mask);
+            ok = 0u;
+            goto done;
+        }
+        __set_PRIMASK(mask);
+        CLEAR_BIT(huart2.Instance->CR1, USART_CR1_RE);
+        SET_BIT(huart2.Instance->CR1, USART_CR1_TE);
+        for (uint8_t i = 0u; i < len; i++) {
+            guard = 200000u;
+            while (!__HAL_UART_GET_FLAG(&huart2, UART_FLAG_TXE) && --guard) {}
+            if (!guard) { ok = 0u; break; }
+            huart2.Instance->TDR = frame[i];
+        }
+        if (ok) {
+            guard = 200000u;
+            while (!__HAL_UART_GET_FLAG(&huart2, UART_FLAG_TC) && --guard) {}
+            if (!guard) ok = 0u;
+        }
+        if (!ok) CLEAR_BIT(huart2.Instance->CR1, USART_CR1_TE);
+        syncObtained = 0;
+        __HAL_UART_CLEAR_FLAG(&huart2, UART_CLEAR_FEF | UART_CLEAR_NEF | UART_CLEAR_OREF | UART_CLEAR_PEF);
+        __HAL_UART_FLUSH_DRREGISTER(&huart2);
+        SET_BIT(huart2.Instance->CR1, USART_CR1_RE);
+        /* RX was cancelled before direct TX; HAL now owns the new RX descriptor. */
+        mask = __get_PRIMASK(); __disable_irq();
+        huart2.ErrorCode = HAL_UART_ERROR_NONE;
+        if (HAL_UART_Receive_IT(&huart2, &rxBuffer[0], 1) != HAL_OK) ok = 0u;
+        __set_PRIMASK(mask);
+    done:
+        mask = __get_PRIMASK(); __disable_irq();
+        uart2_direct_tx_owned = 0u;
+        __set_PRIMASK(mask);
+        return ok;
+    }
 
-		__HAL_UART_DISABLE_IT(&huart2, UART_IT_RXNE);
-		CLEAR_BIT(huart2.Instance->CR1, USART_CR1_RE);		//reception off while we drive the single wire line
-
-		for(uint8_t i = 0; i < len; i++){
-			uint32_t guard = 200000;
-			while(!__HAL_UART_GET_FLAG(&huart2, UART_FLAG_TXE) && --guard){}
-			if(!guard) break;
-			huart2.Instance->TDR = frame[i];
-		}
-		{
-			uint32_t guard = 200000;
-			while(!__HAL_UART_GET_FLAG(&huart2, UART_FLAG_TC) && --guard){}	//end of the last byte
-		}
-
-		//reception back on, resynchronised from the start of the next block
-		syncObtained = 0;
-		__HAL_UART_CLEAR_FLAG(&huart2, UART_CLEAR_FEF | UART_CLEAR_NEF | UART_CLEAR_OREF | UART_CLEAR_PEF);
-		__HAL_UART_FLUSH_DRREGISTER(&huart2);
-		SET_BIT(huart2.Instance->CR1, USART_CR1_RE);
-		huart2.ErrorCode = HAL_UART_ERROR_NONE;
-		huart2.State     = HAL_UART_STATE_READY;	//this HAL has a single state for TX and RX
-		HAL_UART_Receive_IT(&huart2, &rxBuffer[0], 1);
-	}
 #endif
 //elm327 function 26/08/2026 - END
 
-//uart tx storm fix 11/10/2026 - BEGIN
-//The line between the chips is a single wire: while a chip transmits, its own receiver gets every byte it sends. If
-//those bytes are not read in time (e.g. the usb interrupt is busy serving a pen drive read on C2/BH) an overrun
-//error occurs, and the HAL error handler sets huart->State=READY while the transmission is still running. From then on
-//UART_Transmit_IT() sees "not busy", returns without writing and WITHOUT disabling the TXE interrupt: TXE stays
-//pending forever and the uart interrupt fires continuously. Having the same priority as the usb interrupt and a
-//lower IRQ number, it always wins: usb and the main loop are never served again (C2 stuck with both leds on, the
-//phone waiting 35 s for a pen drive read, 11/10/2026). Two fixes: the receiver is switched off while we transmit
-//(no echo, so no overrun, as uart_link_send() already does), and an error during a transmission aborts it cleanly.
-
-//receiver of the inter chip line back on, after one of our transmissions (or its abort)
-void uart2ReceiverOn(void){
-	__HAL_UART_CLEAR_FLAG(&huart2, UART_CLEAR_FEF | UART_CLEAR_NEF | UART_CLEAR_OREF | UART_CLEAR_PEF);
-	__HAL_UART_FLUSH_DRREGISTER(&huart2);
-	SET_BIT(huart2.Instance->CR1, USART_CR1_RE);
-}
-
-//sends the message at the head of the queue, with the receiver off, and removes it from the queue. Interrupts are off
-//around start and removal: an error interrupt that puts the message back in the queue (HAL_UART_ErrorCallback) must
-//find it already removed. Returns 1 if the transmission started.
-static uint8_t uart2TransmitQueued(void){
-	uint8_t started=0;
-	__disable_irq();
-	CLEAR_BIT(huart2.Instance->CR1, USART_CR1_RE); //no echo of our own bytes while we drive the line
-	if (HAL_UART_Transmit_IT(&huart2, tx_queue->tx_buffer[tx_queue->head], UART_BUFFER_SIZE) == HAL_OK){
-		tx_queue->head = (tx_queue->head + 1) % QUEUE_SIZE; // update head index in a circular way
-		tx_queue->count--;
-		started=1;
-	}else{
-		SET_BIT(huart2.Instance->CR1, USART_CR1_RE); //not started: receiver back on at once
-	}
-	__enable_irq();
-	return started;
-}
-//uart tx storm fix 11/10/2026 - END
-
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart){
-	//uart tx storm fix 11/10/2026 - a transmission was running: the HAL has already set State=READY, so the TXE (or TC)
-	//interrupt left enabled would fire forever. Abort it: interrupts off, and on the inter chip line the message goes
-	//back in the queue if not all of its bytes had been loaded (TXE still enabled), to be sent again at the next
-	//chance. If they had all been loaded (only TC enabled) it is considered sent: no duplicate commands.
-	if(huart->Instance->CR1 & (USART_CR1_TXEIE | USART_CR1_TCIE)){
-		uint8_t incomplete = (huart->Instance->CR1 & USART_CR1_TXEIE) ? 1 : 0;
-		__HAL_UART_DISABLE_IT(huart, UART_IT_TXE);
-		__HAL_UART_DISABLE_IT(huart, UART_IT_TC);
-		if(huart->Instance == USART2){
-			if(incomplete && tx_queue->count < QUEUE_SIZE){ //the slot of the aborted message is free until the queue is full
-				tx_queue->head = (tx_queue->head + QUEUE_SIZE - 1) % QUEUE_SIZE;
-				tx_queue->count++;
-			}
-			uart2ReceiverOn();
-		}
-		#if defined(C1baccable)
-			if(huart->Instance == USART1){ //same end as HAL_UART_TxCpltCallback: back to receive
-				CLEAR_BIT(huart1.Instance->CR1, USART_CR1_TE);
-				SET_BIT(huart1.Instance->CR1, USART_CR1_RE);
-			}
-		#endif
-	}
-
 
 	if (( currentTime - lastUartErrorCallback)>1000) onboardLed_red_on();
 	lastUartErrorCallback = currentTime;
@@ -714,10 +751,48 @@ uint8_t getOtherProcessorsSleepingStatus(){
 */
 
 
+/* Stage C2: checked, interrupt-state-preserving enqueue for ABS commands.
+ * Do not clear the shared queue: it also carries unrelated functions. */
+int uart_try_enqueue_abs(const uint8_t *data, size_t length) {
+#if defined(C1baccable)
+    if (data == NULL || length == 0u || length > UART_BUFFER_SIZE) return 0;
+    uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    int ok = 0;
+    if (tx_queue->count < QUEUE_SIZE) {
+        memset(tx_queue->tx_buffer[tx_queue->tail], 0x20, UART_BUFFER_SIZE);
+        memcpy(tx_queue->tx_buffer[tx_queue->tail], data, length);
+        tx_queue->tail = (tx_queue->tail + 1u) % QUEUE_SIZE;
+        tx_queue->count++;
+        ok = 1;
+    }
+    __set_PRIMASK(primask);
+    return ok;
+#else
+    (void)data; (void)length;
+    return 0;
+#endif
+}
+
+/* Atomic admission check for the Stage G restore request.
+ * Success means queued, not physically received by BH. */
+uint8_t tryAddToUARTSendQueue(const uint8_t *data, size_t length) {
+    uint8_t ok=0u;
+    uint32_t primask=__get_PRIMASK();
+    __disable_irq();
+    if (tx_queue->count < QUEUE_SIZE) {
+        addToUARTSendQueueDuringInterrupt(data,length);
+        ok=1u;
+    }
+    __set_PRIMASK(primask);
+    return ok;
+}
+
 void addToUARTSendQueue(const uint8_t *data, size_t length) {
+	uint32_t primask = __get_PRIMASK();
 	__disable_irq();
 	addToUARTSendQueueDuringInterrupt(data,length);
-	__enable_irq();
+	__set_PRIMASK(primask);
 }
 
 
@@ -742,9 +817,10 @@ void addToUARTSendQueueDuringInterrupt(const uint8_t *data, size_t length) {
 #if(defined(C1baccable))
 
 	void addToUART1SendQueue(const uint8_t *data, size_t length) { //add to queue message to schizzaforte
+		uint32_t primask = __get_PRIMASK();
 		__disable_irq();
 		addToUART1SendQueueDuringInterrupt(data,length);
-		__enable_irq();
+		__set_PRIMASK(primask);
 	}
 
 	void addToUART1SendQueueDuringInterrupt(const uint8_t *data, size_t length) {
@@ -775,12 +851,27 @@ void addToUARTSendQueueDuringInterrupt(const uint8_t *data, size_t length) {
     		SET_BIT(huart1.Instance->CR1, USART_CR1_TE);	// enable TX
     		__HAL_UART_CLEAR_FLAG(&huart1, UART_CLEAR_OREF | UART_CLEAR_NEF | UART_CLEAR_TCF); //clear any error
     		//onboardLed_red_on();
-			if (HAL_UART_Transmit_IT(&huart1, tx_queue_uart1->tx_buffer[tx_queue_uart1->head], UART1_BUFFER_SIZE) == HAL_OK){
+			/* Never overwrite the snapshot while an interrupt-driven TX is active. */
+			if (huart1.State != HAL_UART_STATE_READY &&
+			    huart1.State != HAL_UART_STATE_BUSY_RX) {
+				CLEAR_BIT(huart1.Instance->CR1, USART_CR1_TE);
+				SET_BIT(huart1.Instance->CR1, USART_CR1_RE);
+				return;
+			}
+			memcpy(uart1_tx_snapshot, tx_queue_uart1->tx_buffer[tx_queue_uart1->head], UART1_BUFFER_SIZE);
+			if (HAL_UART_Transmit_IT(&huart1, uart1_tx_snapshot, UART1_BUFFER_SIZE) == HAL_OK){
 				// update head index in a circular way
 				tx_queue_uart1->head = (tx_queue_uart1->head + 1) % QUEUE_SIZE;
 				tx_queue_uart1->count--;
 
 			}else{
+				/* No TX was started: restore half-duplex receive direction. */
+				CLEAR_BIT(huart1.Instance->CR1, USART_CR1_TE);
+				SET_BIT(huart1.Instance->CR1, USART_CR1_RE);
+				/* Re-arm only when no receive is currently active. */
+				if (huart1.State == HAL_UART_STATE_READY) {
+					HAL_UART_Receive_IT(&huart1, &rxBufferUart1[0], 1);
+				}
 				onboardLed_red_on();
 			}
 		}
@@ -795,6 +886,8 @@ void processUART(void) {
 
 	#if(defined(C1baccable))
 		if(lowConsumeIsActive)  return; //other chips are under reset, avoid to send messages   //|| (allProcessorsWakeupTime<TIMING__C1____DELAY_BEFORE_SERIAL_PROCESS_AFTER_OTHER_CHIP_WAKE_MS))
+		/* Only schedule ABS UART traffic when normal C1 UART processing is allowed. */
+		abs_c1_service_poll(currentTime);
 		//onboardLed_blue_on();
 
 		if(currentTime-allProcessorsWakeupTime>TIMING__C1____DELAY_BEFORE_OTHER_CHIP_STATUS_REQUEST_MS){
@@ -802,14 +895,8 @@ void processUART(void) {
 				lastMsgSentToC2Time=currentTime;
 				//get status from C2
 				//send request thu serial line
-				uint8_t tmpArr1[3]={C2BusID,C2cmdGetStatus,' '};
-				//readFaults ABS 10/10/2026 - while C1 is collecting the ABS faults, the periodic message to C2 asks them
-				//(it opens the reply window of C2 as C2cmdGetStatus does): no extra message in the queue
-				if(faultsEcu==FAULTS_ECU_ABS && faultsStateMachine==0){
-					tmpArr1[1]=C2cmdAbsFaultsGet;
-					tmpArr1[2]=(uint8_t)('A'+faultsAbsNextIndex);
-				}
-				addToUARTSendQueue(tmpArr1, 3); //commented for test
+				uint8_t tmpArr1[2]={C2BusID,C2cmdGetStatus};
+				addToUARTSendQueue(tmpArr1, 2); //commented for test
 				onboardLed_blue_on();
 			}
 			if(currentTime-lastMsgSentToBHTime>TIMING__C1____BH_STATUS_REQUEST_TIMEOUT_MS){ //1260
@@ -830,9 +917,13 @@ void processUART(void) {
 
 		if(currentTime-weCanSendAMessageReply<TIMING__C2_BH_SERIAL_TIMEOUT_REPLY_MS){ //if less than 200msec has passed since last message received from master baccable, send a message
 
-			if( __HAL_UART_GET_FLAG(&huart2, UART_FLAG_TC) ){ //&& (huart2.State == HAL_UART_STATE_READY)
+			if( __HAL_UART_GET_FLAG(&huart2, UART_FLAG_TC) ){ //&& ((huart2.State == HAL_UART_STATE_READY || huart2.State == HAL_UART_STATE_BUSY_RX))
 				if(tx_queue->tx_buffer[tx_queue->head][1]==C1cmdLaneSingleTap) onboardLed_red_on(); //just for test
-				if (uart2TransmitQueued()){ //receiver off while transmitting, message removed from the queue //uart tx storm fix 11/10/2026
+				if (uart2_hal_tx_start(tx_queue->tx_buffer[tx_queue->head])){
+
+					// update head index in a circular way
+					tx_queue->head = (tx_queue->head + 1) % QUEUE_SIZE;
+					tx_queue->count--;
 					//onboardLed_blue_on();
 				}else{
 					onboardLed_red_on();
@@ -845,14 +936,34 @@ void processUART(void) {
 
     //if we are C1 baccable, we can send a message each 250msec
 	#if defined(C1baccable)
+        /* Drop only obsolete ABS commands at the queue head. Do not touch
+           non-ABS traffic or reorder the shared FIFO. */
+        while (tx_queue->count != 0u &&
+               tx_queue->tx_buffer[tx_queue->head][0] == C2BusID &&
+               (tx_queue->tx_buffer[tx_queue->head][1] == C2cmdAbsFaultsStart ||
+                tx_queue->tx_buffer[tx_queue->head][1] == C2cmdAbsFaultsGet) &&
+               !abs_c1_service_tx_is_current(tx_queue->tx_buffer[tx_queue->head][1],
+                   tx_queue->tx_buffer[tx_queue->head][2],
+                   tx_queue->tx_buffer[tx_queue->head][3])) {
+            tx_queue->head = (tx_queue->head + 1u) % QUEUE_SIZE;
+            tx_queue->count--;
+        }
+        if (tx_queue->count == 0u) return;
 
     	if(currentTime-last_sent_serial_msg_time>TIMING__C1____SERIAL_TIMEOUT_REPLY_MS){ //each 250msec send a message (so that we left the time to receiver to reply)
 			last_sent_serial_msg_time=currentTime;
-			if( __HAL_UART_GET_FLAG(&huart2, UART_FLAG_TC) ){ //&& (huart2.State == HAL_UART_STATE_READY)
-				uint8_t msgDestination=tx_queue->tx_buffer[tx_queue->head][0]; //read before the message leaves the queue //uart tx storm fix 11/10/2026
-				if (uart2TransmitQueued()){ //receiver off while transmitting, message removed from the queue //uart tx storm fix 11/10/2026
+			if( __HAL_UART_GET_FLAG(&huart2, UART_FLAG_TC) ){ //&& ((huart2.State == HAL_UART_STATE_READY || huart2.State == HAL_UART_STATE_BUSY_RX))
+				if (uart2_hal_tx_start(tx_queue->tx_buffer[tx_queue->head])){
+                if (tx_queue->tx_buffer[tx_queue->head][0] == C2BusID &&
+                    (tx_queue->tx_buffer[tx_queue->head][1] == C2cmdAbsFaultsStart ||
+                     tx_queue->tx_buffer[tx_queue->head][1] == C2cmdAbsFaultsGet)) {
+                    abs_c1_service_tx_started(tx_queue->tx_buffer[tx_queue->head][1],
+                        tx_queue->tx_buffer[tx_queue->head][2],
+                        tx_queue->tx_buffer[tx_queue->head][3], currentTime);
+                }
+                
 					//save time
-					switch(msgDestination){
+					switch(tx_queue->tx_buffer[tx_queue->head][0]){
 						case C2BusID:
 						case C2_Bh_BusID: //only C2 is allowed to reply when this msg is received
 						case AllResetFaults: //only C2 is allowed to reply when this msg is received
@@ -866,6 +977,10 @@ void processUART(void) {
 							break;
 						default:
 					}
+
+					// update head index in a circular way
+					tx_queue->head = (tx_queue->head + 1) % QUEUE_SIZE;
+					tx_queue->count--;
 				}else{
 					onboardLed_red_on();
 

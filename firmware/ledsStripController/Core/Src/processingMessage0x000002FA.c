@@ -7,6 +7,68 @@
 
 #include "debug.h"
 #include "processingMessage0x000002FA.h"
+#include "processingExtendedMessage.h"
+
+/* Menu restructuring: legacy IDs remain unchanged; 16=Features, 17=Exit. */
+#if defined(C1baccable)
+static uint8_t baccableFeaturesActive = 0;
+static const uint8_t baccableMainOrder[] = {0,1,10,9,16,4};
+static const uint8_t baccableFeatureOrder[] = {17,5,7,8,11,12,15,14,13,2,3};
+static uint8_t baccableMenuAllowed(uint8_t id) {
+    switch(id) {
+        case 2: return function_read_faults_enabled != 0;
+        case 3: return function_clear_faults_enabled != 0;
+        case 5: return function_dyno_mode_master_enabled != 0;
+        case 7: return function_front_brake_forcer_master != 0;
+        case 8: return function_4wd_disabler_enabled != 0;
+        case 11: return HAS_function_enabled != 0;
+        case 12: return QV_exhaust_flap_function_enabled != 0;
+        default: return 1;
+    }
+}
+static void baccableMenuStep(int direction) {
+    const uint8_t *order = baccableFeaturesActive ? baccableFeatureOrder : baccableMainOrder;
+    const uint8_t count = baccableFeaturesActive ? sizeof(baccableFeatureOrder) : sizeof(baccableMainOrder);
+    uint8_t position = 0;
+    for(uint8_t i=0;i<count;i++) if(order[i]==main_dashboardPageIndex) { position=i; break; }
+    for(uint8_t tries=0;tries<count;tries++) {
+        position=(uint8_t)((position + count + direction)%count);
+        if(baccableMenuAllowed(order[position])) { main_dashboardPageIndex=order[position]; break; }
+    }
+}
+#endif
+
+	/* @netzmark to speed-up clicks reaction */
+#if defined(C1baccable)
+
+    extern uint32_t lastDisplayUpdateTime;
+    extern uint16_t dynamicInterval;
+    extern uint8_t group_step;
+
+	void resetDashboardTimers(void) {
+	    // 1. We reserve quiet on Serial after click
+	    lastDisplayUpdateTime = currentTime - 500;
+
+	    // 2. Set default interval to avoid 0 - the same like in C1baccable.c
+	    dynamicInterval = 200;
+
+	    // 3. Set UDS request after 10ms (fluent new page start)
+	    last_sent_uds_parameter_request_Time = currentTime - dynamicInterval;
+
+	    // 4. Clean UDS cache
+	    for(int i = 0; i < MAX_UDS_PARAMS; i++) {
+	        uds_values_cache[i] = NAN;
+	    }
+
+	    // Clean UART to BH data
+	    dashboardParamCouple[0] = NAN;
+	    dashboardParamCouple[1] = NAN;
+
+	    group_step = 0;
+	}
+
+#endif
+    /* @netzmark - end */
 
 void processingMessage0x000002FA(){
 	// Button is pressed on left area of the wheel
@@ -25,12 +87,8 @@ void processingMessage0x000002FA(){
 	#endif
 
 	#if defined(C1baccable)
-
-
-
-
+	
 	  	//function ACC Virtual Pad
-
 		if(function_acc_virtual_pad_enabled==1){
 			switch (rx_msg_data[0]){
 				case 0x12: //CC on
@@ -43,9 +101,9 @@ void processingMessage0x000002FA(){
 					onboardLed_blue_on();
 					break;
 				case 0x90: //RES pressed
-					if (newWheelPressedButtonID==0x10 && (ACC_status>1) && (ACC_status!=5)) ACC_WAS_ENGAGED_WHEN_RES_WAS_PRESSED=1; //if we begin to press RES button and ACC is Engaged, set ACC_WAS_ENGAGED_WHEN_RES_WAS_PRESSED
+					if (newWheelPressedButtonID==0x10 && ACC_engaged) ACC_WAS_ENGAGED_WHEN_RES_WAS_PRESSED=1; //if begin to press button RES and ACC is Engaged, set ACC_WAS_ENGAGED_WHEN_RES_WAS_PRESSED
 					newWheelPressedButtonID=0x90; //store the new RES button status (pressed)
-					if ((ACC_status>1) && (ACC_status!=5) && ACC_WAS_ENGAGED_WHEN_RES_WAS_PRESSED){
+					if (ACC_engaged && ACC_WAS_ENGAGED_WHEN_RES_WAS_PRESSED){
 						//simulate the distance button press
 						memcpy(ACC_msg_data, &rx_msg_data, rx_msg_header.DLC);
 						ACC_msg_data[0] = 0x50; //ACC distance change
@@ -63,79 +121,97 @@ void processingMessage0x000002FA(){
 			}
 		}
 
+			//Gaucho ori code
+//		if(function_acc_autostart){
+//			if(ACC_engaged){
+//				if(carSteadyCounter==200 && brakeIntervention_ACC_ESC_ASR){ //if car is steady and brake is pressed by ACC
+//					if(rx_msg_data[0]==0x10){ //if no button was pressed on cruise control pad
+//						if (currentTime-lastSentAutostartMsg>500){
+//							rx_msg_data[0] = 0x90; //Res button press
+//
+//							if(function_acc_autostart==2){
+//								rx_msg_data[0] = 0x08; //ACC gently up button press
+//							}
+//							rx_msg_data[1] = (rx_msg_data[1] & 0xF0) | (((rx_msg_data[1] & 0x0F) + 1) % 16); //increase the counter
+//							rx_msg_data[2]=calculateCRC(rx_msg_data,rx_msg_header.DLC); //update checksum
+//
+//							can_tx((CAN_TxHeaderTypeDef *)&rx_msg_header, rx_msg_data); //send message to simulate RES button press
+//							rx_msg_data[0]=0x10; //restore value 10 to avoid unwanted behaviours with subsequent pieces of code
+//							//increase a counter
+//							AutostartMsgCounter++;
+//							if (AutostartMsgCounter>= 5){
+//								AutostartMsgCounter=0;
+//								lastSentAutostartMsg=currentTime;
+//							}
+//						}
+//					}
+//				}
+//			}
+//		}
+
+		//@netzmark corrected code
 		if(function_acc_autostart){
-			if((ACC_status>1) && (ACC_status!=5)){ //if ACC engaged
-				if(carSteadyCounter==200 && brakeIntervention_ACC_ESC_ASR){ //if car is steady and brake is pressed by ACC
-					if(rx_msg_data[0]==0x10){ //if no button was pressed on cruise control pad
-						if (currentTime-lastSentAutostartMsg>500){ //once each 1,5 seconds
-							rx_msg_data[0] = 0x90; //Res button press
+		    if(ACC_engaged){
 
-							if(function_acc_autostart==2){
-								rx_msg_data[0] = 0x08; //ACC gently up button press
-							}
-							rx_msg_data[1] = (rx_msg_data[1] & 0xF0) | (((rx_msg_data[1] & 0x0F) + 1) % 16); //increase the counter
-							rx_msg_data[2]=calculateCRC(rx_msg_data,rx_msg_header.DLC); //update checksum
+		        if(carSteadyCounter == 200 && brakeIntervention_ACC_ESC_ASR == 1){
 
-							can_tx((CAN_TxHeaderTypeDef *)&rx_msg_header, rx_msg_data); //send message to simulate RES button press
-							rx_msg_data[0]=0x10; //restore value 10 to avoid unwanted behaviours with subsequent pieces of code
-							//increase a counter
-							AutostartMsgCounter++;
-							if (AutostartMsgCounter>= 5){ //we are simulating a 100msec button press event
-								AutostartMsgCounter=0;
-								lastSentAutostartMsg=currentTime;
-							}
-						}
-					}
-				}
-			}
+		            if (autostartActiveBurst == 0) {
+		                if (currentTime - lastSentAutostartMsg > 450) { //real 450ms pause
+		                    autostartActiveBurst = 1;
+		                }
+		            }
+
+		            // 5 frames repetitions synchronised with original 0x10
+		            if (autostartActiveBurst == 1) {
+		                if(rx_msg_data[0] == 0x10){
+
+		                    rx_msg_data[0] = 0x90; // RES button press
+		                    if(function_acc_autostart == 2){
+		                        rx_msg_data[0] = 0x08; // ACC gently up button press
+		                    }
+
+		                    rx_msg_data[1] = (rx_msg_data[1] & 0xF0) | (((rx_msg_data[1] & 0x0F) + 1) % 16);
+		                    rx_msg_data[2] = calculateCRC(rx_msg_data, rx_msg_header.DLC);
+
+		                    can_tx((CAN_TxHeaderTypeDef *)&rx_msg_header, rx_msg_data);
+
+		                    rx_msg_data[0] = 0x10;
+
+		                    AutostartMsgCounter++;
+
+		                    if (AutostartMsgCounter >= 5) {
+		                        AutostartMsgCounter = 0;
+		                        lastSentAutostartMsg = currentTime;
+		                        autostartActiveBurst = 0;
+		                    }
+		                }
+		            }
+		        }
+
+		        // Just for any case
+		        if(carSteadyCounter < 200 || brakeIntervention_ACC_ESC_ASR == 0){
+		            AutostartMsgCounter = 0;
+		            autostartActiveBurst = 0;
+		        }
+
+		    }
 		}
 
-		if(cruiseControlDisabled && (ACC_status==0)){ //if we are allowed to press buttons (CC and ACC disabled), use them in baccable menu
+
+
+		if(cruiseControlDisabled && ACC_Disabled){ //if we are allowed to press buttons, use them in baccable menu
 			switch(rx_msg_data[0]){
 				case 0x18://if cruise control speed reduction button was pressed, user wants to see next page
 					if(wheelPressedButtonID==0x10 && baccableDashboardMenuVisible){ //if button released, use pressed button
 						wheelPressedButtonID=0x18; //avoid to return here
+						resetDashboardTimers(); // @netzmark to speed-up clicks reaction
 						if(commandsMenuEnabled){
 							switch(dashboard_menu_indent_level){
 								case 0: //main menu
-									main_dashboardPageIndex+= 1; //set next page
+                                    baccableMenuStep(1);
+                                    sendMainDashboardPageToSlaveBaccable();
+                                    break;
 
-									if(function_read_faults_enabled==0){
-										if(main_dashboardPageIndex==2) main_dashboardPageIndex++;
-									}
-
-
-									if(function_clear_faults_enabled==0){
-										if(main_dashboardPageIndex==3) main_dashboardPageIndex++;
-									}
-
-									if(function_dyno_mode_master_enabled==0){
-										if(main_dashboardPageIndex==5) main_dashboardPageIndex++;
-									}
-
-									if(function_esc_tc_customizator_enabled==0){
-										if(main_dashboardPageIndex==6) main_dashboardPageIndex++;
-									}
-									if(function_front_brake_forcer_master==0){
-										if(main_dashboardPageIndex==7) main_dashboardPageIndex++;
-									}
-
-									if(function_4wd_disabler_enabled==0){
-										if(main_dashboardPageIndex==8) main_dashboardPageIndex++;
-									}
-
-									if(HAS_function_enabled==0){
-										if(main_dashboardPageIndex==11) main_dashboardPageIndex++;
-									}
-
-									if(QV_exhaust_flap_function_enabled==0){
-										if(main_dashboardPageIndex==12) main_dashboardPageIndex++;
-									}
-
-									if(main_dashboardPageIndex>=dashboard_main_menu_array_len)  main_dashboardPageIndex=0; // make a rotative menu
-									//onboardLed_blue_on();
-									sendMainDashboardPageToSlaveBaccable();//send dashboard page via usb
-									break;
 								case 1:
 									if(main_dashboardPageIndex==1){ //we are in show params submenu
 										dashboardPageIndex += 1; //set next page
@@ -168,11 +244,20 @@ void processingMessage0x000002FA(){
 										if(params_setup_dashboardPageIndex>total_pages_in_params_setup_dashboard_menu)  params_setup_dashboardPageIndex=0; // make a rotative menu
 										sendParamsSetupDashboardPageToSlaveBaccable(); //send
 									}
-									if(main_dashboardPageIndex==2 && faultsStateMachine==3 && faultsDTCcount>0){ //readFaults 12/08/2026
+									/* STAGE_C1C_OPTIONAL_ECU_STATUS_UI BEGIN */
+#if STAGE_C1C_OPTIONAL_ECU_STATUS_UI
+if(main_dashboardPageIndex==2 && dashboard_menu_indent_level==1 && faultsStateMachine==3) {
+    stageC1cPageNext();
+    sendMainDashboardPageToSlaveBaccable();
+}
+#else
+if(main_dashboardPageIndex==2 && faultsStateMachine==3 && faultsDTCcount>0){ //readFaults 12/08/2026
 										faultsDTCsubmenuIndex++;
 										if(faultsDTCsubmenuIndex>=faultsDTCcount) faultsDTCsubmenuIndex=0;
 										sendMainDashboardPageToSlaveBaccable();
 									}
+#endif
+/* STAGE_C1C_OPTIONAL_ECU_STATUS_UI END */
 									break;
 								default:
 									break; //unexpected
@@ -183,9 +268,10 @@ void processingMessage0x000002FA(){
 				case 0x20://if cruise control speed strong reduction button was pressed, user wants to jump 10 pages forward
 						if(wheelPressedButtonID==0x18 && baccableDashboardMenuVisible){ //if button released, use pressed button
 							wheelPressedButtonID=0x20; //avoid to return here
+							resetDashboardTimers(); // @netzmark to speed-up clicks reaction
 							if(commandsMenuEnabled){
 								switch(dashboard_menu_indent_level){
-									case 0: //main menu
+/*									case 0: //main menu
 										main_dashboardPageIndex+= 1; //set next page
 										if(function_read_faults_enabled==0){
 											if(main_dashboardPageIndex==2) main_dashboardPageIndex++;
@@ -197,9 +283,11 @@ void processingMessage0x000002FA(){
 										if(function_dyno_mode_master_enabled==0){
 											if(main_dashboardPageIndex==5) main_dashboardPageIndex++;
 										}
+
 										if(function_esc_tc_customizator_enabled==0){
 											if(main_dashboardPageIndex==6) main_dashboardPageIndex++;
 										}
+
 										if(function_front_brake_forcer_master==0){
 											if(main_dashboardPageIndex==7) main_dashboardPageIndex++;
 										}
@@ -220,6 +308,7 @@ void processingMessage0x000002FA(){
 										//onboardLed_blue_on();
 										sendMainDashboardPageToSlaveBaccable();//send dashboard page to BH
 										break;
+*/   
 									case 1:
 										if(main_dashboardPageIndex==1){ //we are in show params submenu
 											dashboardPageIndex += 10; //set 10 pages forward (+1 in gentle command)
@@ -248,11 +337,20 @@ void processingMessage0x000002FA(){
 											//onboardLed_blue_on();
 											sendParamsSetupDashboardPageToSlaveBaccable(); //send
 										}
-										if(main_dashboardPageIndex==2 && faultsStateMachine==3 && faultsDTCcount>0){ //readFaults 12/08/2026
+										/* STAGE_C1C_OPTIONAL_ECU_STATUS_UI BEGIN */
+#if STAGE_C1C_OPTIONAL_ECU_STATUS_UI
+if(main_dashboardPageIndex==2 && dashboard_menu_indent_level==1 && faultsStateMachine==3) {
+    stageC1cPageNext();
+    sendMainDashboardPageToSlaveBaccable();
+}
+#else
+if(main_dashboardPageIndex==2 && faultsStateMachine==3 && faultsDTCcount>0){ //readFaults 12/08/2026
 											faultsDTCsubmenuIndex++;
 											if(faultsDTCsubmenuIndex>=faultsDTCcount) faultsDTCsubmenuIndex=0;
 											sendMainDashboardPageToSlaveBaccable();
 										}
+#endif
+/* STAGE_C1C_OPTIONAL_ECU_STATUS_UI END */
 										break;
 									default:
 										break; //unexpected
@@ -264,45 +362,14 @@ void processingMessage0x000002FA(){
 				case 0x08: //if cruise control speed increase button was pressed, user wants to see previous page
 					if(wheelPressedButtonID==0x10 && baccableDashboardMenuVisible){ //if button released, use pressed button
 						wheelPressedButtonID=0x08; //avoid to enter again here
+						resetDashboardTimers(); // @netzmark to speed-up clicks reaction
 						if(commandsMenuEnabled){
 							switch(dashboard_menu_indent_level){
 								case 0: //main menu
-									main_dashboardPageIndex-= 1; //set next page
+                                    baccableMenuStep(-1);
+                                    sendMainDashboardPageToSlaveBaccable();
+                                    break;
 
-									if(main_dashboardPageIndex>=dashboard_main_menu_array_len)  main_dashboardPageIndex=dashboard_main_menu_array_len-1; // make a rotative menu
-
-									if(QV_exhaust_flap_function_enabled==0){
-										if(main_dashboardPageIndex==12) main_dashboardPageIndex--;
-									}
-
-									if(HAS_function_enabled==0){
-										if(main_dashboardPageIndex==11) main_dashboardPageIndex--;
-									}
-
-
-									if(function_4wd_disabler_enabled==0){
-										if(main_dashboardPageIndex==8) main_dashboardPageIndex--;
-									}
-
-									if(function_front_brake_forcer_master==0){
-										if(main_dashboardPageIndex==7) main_dashboardPageIndex--;
-									}
-									if(function_esc_tc_customizator_enabled==0){
-										if(main_dashboardPageIndex==6) main_dashboardPageIndex--;
-									}
-									if(function_dyno_mode_master_enabled==0){
-										if(main_dashboardPageIndex==5) main_dashboardPageIndex--;
-									}
-
-									if(function_clear_faults_enabled==0){
-										if(main_dashboardPageIndex==3) main_dashboardPageIndex--;
-									}
-									if(function_read_faults_enabled==0){
-										if(main_dashboardPageIndex==2) main_dashboardPageIndex--;
-									}
-									//onboardLed_blue_on();
-									sendMainDashboardPageToSlaveBaccable();//send dashboard page via usb
-									break;
 								case 1:
 									if(main_dashboardPageIndex==1){ //we are in show params submenu
 										dashboardPageIndex -= 1; //set previous page
@@ -332,11 +399,20 @@ void processingMessage0x000002FA(){
 										//onboardLed_blue_on();
 										sendParamsSetupDashboardPageToSlaveBaccable(); //send
 									}
-									if(main_dashboardPageIndex==2 && faultsStateMachine==3 && faultsDTCcount>0){ //readFaults 12/08/2026
+									/* STAGE_C1C_OPTIONAL_ECU_STATUS_UI BEGIN */
+#if STAGE_C1C_OPTIONAL_ECU_STATUS_UI
+if(main_dashboardPageIndex==2 && dashboard_menu_indent_level==1 && faultsStateMachine==3) {
+    stageC1cPagePrev();
+    sendMainDashboardPageToSlaveBaccable();
+}
+#else
+if(main_dashboardPageIndex==2 && faultsStateMachine==3 && faultsDTCcount>0){ //readFaults 12/08/2026
 										if(faultsDTCsubmenuIndex==0) faultsDTCsubmenuIndex=faultsDTCcount-1;
 										else faultsDTCsubmenuIndex--;
 										sendMainDashboardPageToSlaveBaccable();
 									}
+#endif
+/* STAGE_C1C_OPTIONAL_ECU_STATUS_UI END */
 									break;
 								default:
 									break; //unexpected
@@ -347,9 +423,10 @@ void processingMessage0x000002FA(){
 				case 0x00: //if cruise control speed strong increase button was pressed, user wants to jump 10 pages before
 						if(wheelPressedButtonID==0x08 && baccableDashboardMenuVisible){
 							wheelPressedButtonID=0x00; //avoid to return here
+							resetDashboardTimers(); // @netzmark to speed-up clicks reaction
 							if(commandsMenuEnabled){
 								switch(dashboard_menu_indent_level){
-									case 0: //main menu
+/*									case 0: //main menu
 										main_dashboardPageIndex-= 1; //set next page
 										if(main_dashboardPageIndex>=dashboard_main_menu_array_len)  main_dashboardPageIndex=dashboard_main_menu_array_len-1; // make a rotative menu
 
@@ -385,6 +462,7 @@ void processingMessage0x000002FA(){
 										//onboardLed_blue_on();
 										sendMainDashboardPageToSlaveBaccable();//send dashboard page via usb
 										break;
+*/  
 									case 1:
 										if(main_dashboardPageIndex==1){ //we are in show params submenu
 											dashboardPageIndex -= 10; //set 10 pages backward
@@ -416,11 +494,20 @@ void processingMessage0x000002FA(){
 											//onboardLed_blue_on();
 											sendParamsSetupDashboardPageToSlaveBaccable(); //send
 										}
-										if(main_dashboardPageIndex==2 && faultsStateMachine==3 && faultsDTCcount>0){ //readFaults 12/08/2026
+										/* STAGE_C1C_OPTIONAL_ECU_STATUS_UI BEGIN */
+#if STAGE_C1C_OPTIONAL_ECU_STATUS_UI
+if(main_dashboardPageIndex==2 && dashboard_menu_indent_level==1 && faultsStateMachine==3) {
+    stageC1cPagePrev();
+    sendMainDashboardPageToSlaveBaccable();
+}
+#else
+if(main_dashboardPageIndex==2 && faultsStateMachine==3 && faultsDTCcount>0){ //readFaults 12/08/2026
 											if(faultsDTCsubmenuIndex==0) faultsDTCsubmenuIndex=faultsDTCcount-1;
 											else faultsDTCsubmenuIndex--;
 											sendMainDashboardPageToSlaveBaccable();
 										}
+#endif
+/* STAGE_C1C_OPTIONAL_ECU_STATUS_UI END */
 										break;
 									default:
 										break; //unexpected
@@ -433,22 +520,24 @@ void processingMessage0x000002FA(){
 
 						if(dashboard_menu_indent_level==0){
 							switch(main_dashboardPageIndex){
+                                case 16: // Enter Features submenu
+                                    baccableFeaturesActive=1;
+                                    main_dashboardPageIndex=17;
+                                    if(!baccableMenuAllowed(main_dashboardPageIndex)) baccableMenuStep(1);
+                                    sendMainDashboardPageToSlaveBaccable();
+                                    break;
+                                case 17: // Exit Features submenu
+                                    baccableFeaturesActive=0;
+                                    main_dashboardPageIndex=16;
+                                    sendMainDashboardPageToSlaveBaccable();
+                                    break;
 								case 1: //show params
 									dashboard_menu_indent_level++;
 									dashboardParamCouple[0]=NAN;//zeroize params
 									dashboardParamCouple[1]=NAN;//zeroize params
 									sendDashboardPageToSlaveBaccable();
 									break;
-								case 2: //read faults //readFaults 12/08/2026
-									// Reset DTC precedenti e avvia sequenza UDS verso Body ECU (0x40); poi, se la lista non e' piena, ECM (0x10) //readFaults ECM 10/10/2026
-									faultsDTCcount         = 0;
-									faultsDTCtotal         = 0; // readFaults fix 05/10/2026
-									faultsDTCbodyCount     = 0; //readFaults ECM 10/10/2026
-									faultsDTCecmEnd        = 0; //readFaults ABS 10/10/2026
-									faultsDTCsubmenuIndex  = 0;
-									faultsStartEcuSession(FAULTS_ECU_BODY); // 10 03 to the BODY, state 0 //readFaults ECM 10/10/2026
-									dashboard_menu_indent_level++;
-									sendMainDashboardPageToSlaveBaccable(); // mostra WAIT
+								case 2: // Read Faults: long OK only; short OK must not start diagnostics
 									break;
 								case 3: //clear faults
 									clearFaultsRequest=255;
@@ -537,10 +626,22 @@ void processingMessage0x000002FA(){
 										}
 									}
 									break;
+									//* @netzmark change
+//								case 9: //setup menu
+//								case 10: //params setup menu
+//									dashboard_menu_indent_level++;
+//									break;
 								case 9: //setup menu
+								    dashboard_menu_indent_level++;
+								    resetDashboardTimers(); //@netzmark to speed-up clicks reaction
+								    sendSetupDashboardPageToSlaveBaccable();
+								    break;
 								case 10: //params setup menu
-									dashboard_menu_indent_level++;
-									break;
+								    dashboard_menu_indent_level++;
+								    resetDashboardTimers(); //@netzmark to speed-up clicks reaction
+								    sendParamsSetupDashboardPageToSlaveBaccable();
+								    break;
+								    // @netzmark change
 								case 11: //toggle HAS function
 									HAS_buttonPressRequested=5;
 									//inform Slave baccable C2
@@ -548,7 +649,7 @@ void processingMessage0x000002FA(){
 									addToUARTSendQueue(tmpArr3, 2);
 									break;
 								case 12: //toggle QV Exhaust Valve
-									exhaustValvesToggle(); //QV and chinese valves, remembered while the engine is off //exhaust valves memory 11/10/2026
+									exhaustValvesToggle();
 									break;
 								case 13: //save Log to filesystem
 									//inform Slave baccable C2 and BH
@@ -607,8 +708,9 @@ void processingMessage0x000002FA(){
 												((uint16_t)(uint8_t)pedal_map_power						!= readFromFlash(29))	|| //PEDAL_MAP_POWER
 												((uint16_t)parkSensorsMuteFunctionEnabled				!= readFromFlash(30))	|| //FRONT_PARK_MUTE
 												((uint16_t)snifferFunctionEnabled						!= readFromFlash(31))	|| //SNIFFER //sniffer function 24/08/2026
-												((uint16_t)elm327FunctionEnabled						!= readFromFlash(32))	|| //ELM327 //elm327 function 26/08/2026
-												((uint16_t)dnaMemoryFunctionEnabled						!= readFromFlash(33))	){ //DNA_MEMORY //DNA memory 18/10/2026
+												((uint16_t)elm327FunctionEnabled						!= readFromFlash(32))	 || //ELM327 //elm327 function 26/08/2026
+												((uint16_t)dnaMemoryFunctionEnabled != readFromFlash(33)) ||
+                                                ((uint16_t)(reverseMuteFunctionEnabled ? 1u : 2u) != readFromFlash(34)) ) {
 													//sniffer function 24/08/2026 - BEGIN
 													//the only setting here with a real hardware side effect (usb re-enumeration), so unlike every
 													//other setting above it is deliberately applied here, at save&exit, rather than immediately on
@@ -777,19 +879,23 @@ void processingMessage0x000002FA(){
 											addToUARTSendQueue(tmpArr5, 2);
 
 											break;
-										case 27: //{'O',' ',' ','E','x','h','a','u','s','t',' ','F','l','a','p'}, " DR" at the end with value 2 //exhaust valves DR 11/10/2026
-											QV_exhaust_flap_function_enabled++;
-											if(QV_exhaust_flap_function_enabled>2) QV_exhaust_flap_function_enabled=0; //rotative selection 0=disabled, 1=enabled, 2=enabled + drive style (D/R open, N/A close) //exhaust valves DR 11/10/2026
-											if(!QV_exhaust_flap_function_enabled) exhaustValvesOpenRequested=0; //function off: nothing to reopen when it is enabled again //exhaust valves memory 11/10/2026
+										case 27: //{'O',' ',' ','Q','V',' ','E','x','h','a','u','s','t',' ','F','l','a','p'},
+											QV_exhaust_flap_function_enabled=(QV_exhaust_flap_function_enabled+1)%3;
+											if(!QV_exhaust_flap_function_enabled) exhaustValvesOpenRequested=0;
 											break;
 										case 28: //{'O',' ',' ','F','r','o','n','t',' ','P','a','r','k',' ','M','u','t','e'}
 											parkSensorsMuteFunctionEnabled=!parkSensorsMuteFunctionEnabled;
 											uint8_t tmpArrPkMute[2]={C2BusID,C2cmdFunctParkSensorsMuteDisabled};
 											if(parkSensorsMuteFunctionEnabled) tmpArrPkMute[1]=C2cmdFunctParkSensorsMuteEnabled;
-											parkMuteBrakeSent=0xFF; //the next 0x107 sends C2 the current brake state //park mute brake from C1 10/10/2026
 											addToUARTSendQueue(tmpArrPkMute, 2);
 											break;
-										case 29: //{'O',' ',' ','S','N','I','F','F','E','R'} //sniffer function 24/08/2026
+										case 29: // Reverse mute: BH CAN function, separate from Front Park Mute.
+                                            reverseMuteFunctionEnabled=!reverseMuteFunctionEnabled;
+                                            uint8_t tmpArrReverse[2]={BhBusID, reverseMuteFunctionEnabled ? BHcmdReverseMuteEnabled : BHcmdReverseMuteDisabled};
+                                            addToUARTSendQueue(tmpArrReverse, 2);
+                                            break;
+										case 30: dnaMemoryFunctionEnabled=!dnaMemoryFunctionEnabled; break;
+                                        case 31: //{'O',' ',' ','S','N','I','F','F','E','R'} //sniffer function 24/08/2026
 											//just a plain preference toggle now, like every other setting on this menu: the actual usb
 											//bring up (or shutdown) is deferred to SAVE&EXIT, see case 0 below
 											snifferFunctionEnabled=!snifferFunctionEnabled;
@@ -797,23 +903,29 @@ void processingMessage0x000002FA(){
 											//clears the other, rather than leaving a tick that would silently do nothing
 											if(snifferFunctionEnabled) elm327FunctionEnabled=0;
 											break;
-										case 30: //{'O',' ',' ','E','L','M','3','2','7'} //elm327 function 26/08/2026
+										case 32: //{'O',' ',' ','E','L','M','3','2','7'} //elm327 function 26/08/2026
 											elm327FunctionEnabled=!elm327FunctionEnabled;
 											if(elm327FunctionEnabled) snifferFunctionEnabled=0;
 											break;
-										case 31: //{'O',' ',' ','D','N','A',' ','M','e','m','o','r','y'} //DNA memory 18/10/2026
-											dnaMemoryFunctionEnabled=!dnaMemoryFunctionEnabled;
-											break;
-										default:
+																				default:
 											break;
 									}
-
+									resetDashboardTimers(); //@netzmark to speed-up clicks reaction XX
 									sendSetupDashboardPageToSlaveBaccable();
 									break;
 								case 2: //read faults - ritorna al menu principale //readFaults 12/08/2026
-									SNIFFER_DEBUG1(0x2508, faultsStateMachine); //read faults: user left the page, sequence stopped. v1=state at exit //readFaults debug 05/10/2026
 									faultsStateMachine = 0xFF; // interrompe eventuale sequenza UDS in corso
 									dashboard_menu_indent_level = 0;
+/* STAGE_C1C_OPTIONAL_ECU_STATUS_UI BEGIN */
+#if STAGE_C1C_OPTIONAL_ECU_STATUS_UI
+                                    // Read Faults overwrites the persistent menu row with ECU status.
+                                    // Restore the original label before rendering the main menu.
+                                    // Clear the entire row to avoid stale characters on LARGE_DISPLAY.
+                                    memset(dashboard_main_menu_array[2], ' ', DASHBOARD_MESSAGE_MAX_LENGTH);
+                                    memcpy(dashboard_main_menu_array[2], "Read faults", sizeof("Read faults") - 1u);
+                                    resetDashboardTimers();
+#endif
+/* STAGE_C1C_OPTIONAL_ECU_STATUS_UI END */
 									sendMainDashboardPageToSlaveBaccable();
 									break;
 								case 10: //PARAMS SETUP MENU
@@ -821,15 +933,20 @@ void processingMessage0x000002FA(){
 										case 0: //{'S','A','V','E','&','E','X','I','T',},
 											saveShownParamsOnflash();
 											dashboard_menu_indent_level=0;
+											resetDashboardTimers(); //@netzmark to speed-up clicks reaction XX
+											sendMainDashboardPageToSlaveBaccable(); //@netzmark to speed-up clicks reaction XX
 											break;
 										default: //toggle hidden variable of current param
 											shownParamsArray[params_setup_dashboardPageIndex-1]=!shownParamsArray[params_setup_dashboardPageIndex-1];
+											resetDashboardTimers();  //@netzmark to speed-up clicks reaction XX
+											sendParamsSetupDashboardPageToSlaveBaccable();  //@netzmark to speed-up clicks reaction XX
 											break;
 									}
 									break;
 								default:
 									//we want to return main menu
 									dashboard_menu_indent_level=0;
+									resetDashboardTimers();  //@netzmark to speed-up clicks reaction XX
 									sendMainDashboardPageToSlaveBaccable(); //print menu
 							}
 						}
@@ -852,12 +969,22 @@ void processingMessage0x000002FA(){
 						if (wheelPressedButtonID==0x89 && (lastPressedWheelButtonDuration>50)){//we pressed RES for around 2 seconds, therefore we want to enable/disable Baccable menu on dashboard
 							wheelPressedButtonID=0x90; //avoid returning here until button is not released
 
-							baccableDashboardMenuVisible=!baccableDashboardMenuVisible; //toggle visualizazion of the menu
+if (baccableDashboardMenuVisible && dashboard_menu_indent_level==0 && main_dashboardPageIndex==2 && function_read_faults_enabled==1) {
+                                stageC1cDtcBegin();
+                                dashboard_menu_indent_level++;
+                                sendMainDashboardPageToSlaveBaccable();
+                            } else {
+                            baccableDashboardMenuVisible=!baccableDashboardMenuVisible; //toggle visualizazion of the menu
 
 							//LOG("Dashboard vis: %d\r\n", baccableDashboardMenuVisible);
 
-							if(!baccableDashboardMenuVisible){ //if menu needs to be hidden, print spaces to clear the string on dashboard
+							if(!baccableDashboardMenuVisible) baccableFeaturesActive=0;
+                            if(!baccableDashboardMenuVisible){ //if menu needs to be hidden, print spaces to clear the string on dashboard
 								clearDashboardBaccableMenu();
+							// Request a one-shot HU text refresh after the clear frame.
+							// BH will independently check gear, mute feedback and timeouts.
+							uint8_t huRestoreCmd[2] = {BhBusID, BHcmdHuTextRestore};
+							addToUARTSendQueue(huRestoreCmd, 2);
 							}else{
 								//dashboardPageIndex=0; //reset the page, just to be sure to show initial Baccable print
 								//main_dashboardPageIndex=0; //shows initial baccable version
@@ -865,6 +992,8 @@ void processingMessage0x000002FA(){
 							}
 
 
+
+                            } // normal long-OK menu toggle
 						}
 					#endif
 
@@ -876,13 +1005,12 @@ void processingMessage0x000002FA(){
 		}
 
 		#ifndef PERMANENTLY_DISABLE_IMMO
-			if(cruiseControlDisabled && (ACC_status==0) ){ //if we are allowed to use the buttons of the cruise control
+			if(cruiseControlDisabled && ACC_Disabled ){ //if we are allowed to use the buttons of the cruise control
 				if (currentRpmSpeed>400){ //if motor is on
-					//gear is neutral, or gear is SNA (0xF) with the car steady since 2 seconds: with MIL on, 0x2EF byte0 is 0xFF and the gear is never 0 //immo with MIL 13/10/2026
-					if((currentGear==0) || ((currentGear==0x0F) && (carSteadyCounter==200))){
+					if((currentGear==0) || ((currentGear==0x0F) && (carSteadyCounter==200))){ //neutral, or unavailable gear with vehicle stationary for >=2 s (MIL case)
 						if((rx_msg_data[0]==0x08) && ((wheelPressedButtonID==0x10) || (wheelPressedButtonID==0x08))){ //user is pressing CC soft speed up button and it was previously released (or pressed by baccable menu up here)
 							lastPressedSpeedUpWheelButtonDuration++;
-							if(lastPressedSpeedUpWheelButtonDuration>620){ //around 20 seconds
+							if(lastPressedSpeedUpWheelButtonDuration>422){ 	// @netzmark: originally it was 1267 (around 30s), I do it faster around 10s.
 								//avoid to return here
 								wheelPressedButtonID=0xF8; //invent a new status to differentiate it from 0x08 used in baccable menu few lines of code up here
 								lastPressedSpeedUpWheelButtonDuration=0; //unuseful here since it is done when button is released. just to be superstitious :-D.
