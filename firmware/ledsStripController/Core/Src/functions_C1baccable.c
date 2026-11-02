@@ -1297,6 +1297,9 @@ if(baccableDashboardMenuVisible) {
 					dashboard_main_menu_array[main_dashboardPageIndex][15]='m';
 					dashboard_main_menu_array[main_dashboardPageIndex][16]='a';
 					dashboard_main_menu_array[main_dashboardPageIndex][17]='l';
+					#if DASHBOARD_MESSAGE_MAX_LENGTH > 18
+					dashboard_main_menu_array[main_dashboardPageIndex][18]=' ';
+					#endif
 				}else{
 					if(launch_assist_enabled==1){
 						if(torque>50){ //assist active and torque greather than minimum threshold. the minimum thr allows to view the menu "...assist" before the following string is printed
@@ -1336,18 +1339,19 @@ if(baccableDashboardMenuVisible) {
  
 							floatToStr(tmpfloatString,(float)launch_torque_threshold,0,4);
 							if(strlen(tmpfloatString)==2){
-								dashboard_main_menu_array[main_dashboardPageIndex][14]=' ';
-								dashboard_main_menu_array[main_dashboardPageIndex][15]=tmpfloatString[0];
-								dashboard_main_menu_array[main_dashboardPageIndex][16]=tmpfloatString[1];
-							}else{
+								dashboard_main_menu_array[main_dashboardPageIndex][13]=' ';
 								dashboard_main_menu_array[main_dashboardPageIndex][14]=tmpfloatString[0];
 								dashboard_main_menu_array[main_dashboardPageIndex][15]=tmpfloatString[1];
-								dashboard_main_menu_array[main_dashboardPageIndex][16]=tmpfloatString[2];
+							}else{
+								dashboard_main_menu_array[main_dashboardPageIndex][13]=tmpfloatString[0];
+								dashboard_main_menu_array[main_dashboardPageIndex][14]=tmpfloatString[1];
+								dashboard_main_menu_array[main_dashboardPageIndex][15]=tmpfloatString[2];
 							}
 
-							dashboard_main_menu_array[main_dashboardPageIndex][17]='N';
+							dashboard_main_menu_array[main_dashboardPageIndex][16]='N';
+							dashboard_main_menu_array[main_dashboardPageIndex][17]='m';
 							#if DASHBOARD_MESSAGE_MAX_LENGTH > 18
-							dashboard_main_menu_array[main_dashboardPageIndex][18]='m';
+							dashboard_main_menu_array[main_dashboardPageIndex][18]=' ';
 #endif
 						}else{
 							//update text
@@ -1369,6 +1373,9 @@ if(baccableDashboardMenuVisible) {
 							dashboard_main_menu_array[main_dashboardPageIndex][15]='i';
 							dashboard_main_menu_array[main_dashboardPageIndex][16]='s';
 							dashboard_main_menu_array[main_dashboardPageIndex][17]='t';
+							#if DASHBOARD_MESSAGE_MAX_LENGTH > 18
+							dashboard_main_menu_array[main_dashboardPageIndex][18]=' ';
+							#endif
 						}
 					}else{ //launch assist not enabled
 						//update text
@@ -1390,6 +1397,9 @@ if(baccableDashboardMenuVisible) {
 						dashboard_main_menu_array[main_dashboardPageIndex][15]='c';
 						dashboard_main_menu_array[main_dashboardPageIndex][16]='e';
 						dashboard_main_menu_array[main_dashboardPageIndex][17]='d';
+						#if DASHBOARD_MESSAGE_MAX_LENGTH > 18
+						dashboard_main_menu_array[main_dashboardPageIndex][18]=' ';
+						#endif
 					}
 				}
 				break;

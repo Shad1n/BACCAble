@@ -107,8 +107,8 @@
 					{.name="Oil: $1.2fL, Level: $2.0fmm",						.udsParamId={28,	89		}}, //param couple: OIL quantity(L) and Oil level(mm)
 					{.name="Water: $3.0f""\xB0""C, Gearbox: $2.0f""\xB0""C",	.udsParamId={42,	33		}}, //param couple: Water temp. and Gearbox temp.
 					{.name="IC In: $2.0f""\xB0""C, Out: $2.0f""\xB0""C",		.udsParamId={23,	22		}}, //param couple: Intercooler input/output  air temperature
-					{.name="Battery: $2.0f%, $3.1fA",							.udsParamId={3,		4		}}, //param couple: Voltage and SoC
-					{.name="Battery: $2.0f%, $2.1fV",							.udsParamId={3,		35		}}, //param couple: Current and SoC
+					{.name="Battery: $3.1fA, SoC: $2.0f%",						.udsParamId={4,		3		}}, //param couple: Voltage and SoC
+					{.name="Battery: $2.1fV, SoC: $2.0f%",						.udsParamId={35,	3		}}, //param couple: Current and SoC
 					{.name="Battery: $2.0f%, $2.1fV, $3.1fA",					.udsParamId={254,   254		}}, //param group: Voltage, Current, SoC,
 					{.name="Exh.: $3.0f""\xB0""C, Cat.: $3.0f""\xB0""C",		.udsParamId={40,	41		}}, //param couple: Exhaust/Catalyst air temperature
 					{.name="RAIL: $4.0fbar, GPF: $2.0f%",						.udsParamId={83,	55		}}, //param couple: Rail pressure / GPF clogging
@@ -174,8 +174,8 @@
 						{.name="Oil: $1.2fbar, $3.0f""\xB0""C",				.udsParamId={0,		5		}}, //param couple: OIL pressure and Oil Temp.
 						{.name="Oil: $3.0f""\xB0""C, Water: $3.0f""\xB0""C",.udsParamId={5,		68		}}, //param couple: OIL temp. and Water Temp.
 						{.name="Oil: $2.0fmm, $2.0f%",						.udsParamId={64,	63		}}, //param couple: OIL level and Oil Quality
-						{.name="Battery: $2.0f%, $3.1fA",					.udsParamId={3,		4		}}, //param couple: Voltage and SoC
-						{.name="Battery: $2.0f%, $2.1fV",					.udsParamId={3,		62		}}, //param couple: Current and SoC
+						{.name="Battery: $3.1fA, SoC: $2.0f%",				.udsParamId={4,		3		}}, //param couple: Voltage and SoC
+						{.name="Battery: $2.1fV, SoC: $2.0f%",				.udsParamId={62,	3		}}, //param couple: Current and SoC
 						{.name="Battery: $2.0f%, $2.1fV, $3.1fA",			.udsParamId={253,   253		}}, //param group: SoC, Voltage, Current
 						{.name="DPF clogging: $2.0f% $3.0f""\xB0""C",		.udsParamId={55,	56		}}, //param couple: DPF clogging percentage and temperature
 						{.name="Regen status $2.0f% $3.0f""\xB0""C",		.udsParamId={57,	56		}}, //param couple: DPF regeneration progress percentage and temperature
