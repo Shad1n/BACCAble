@@ -1,6 +1,12 @@
 #ifndef INC_COMPILE_TIME_DEFINES_H_
 #define INC_COMPILE_TIME_DEFINES_H_
 
+/* @Shadin: Shared ABS UART protocol constants.
+ * Available before other headers regardless of transitive include order. */
+#define ABS_PROTO_FRAME 19u
+#define ABS_PROTO_MAX 20u
+#define ABS_PROTO_REPLY 0x29u
+
 	#ifdef INCLUDE_USER_CONFIG_H
 		// In user_config.h file the user can set preferred defines for its own custom builds;
  		// Inside user_config.h.sample file you will find instructions about how to use it.
@@ -9,7 +15,7 @@
 
 	//this is used to store FW version, also shown on usb when used as slcan
 	#ifndef BUILD_VERSION //optional compile time define with -D, default: undefined
-		#define BUILD_VERSION "v3.9.2.3"  //versioning rule: first digit major change, second digit minor change (like new feature), third digit bug fix or cosmetics, fourth digit Shadin71 subversion
+		#define BUILD_VERSION "v3.9.2.4"  //versioning rule: first digit major change, second digit minor change (like new feature), third digit bug fix or cosmetics, fourth digit Shadin71 subversion
 	#endif
 	#define _FW_VERSION "BACCAble " BUILD_VERSION
 

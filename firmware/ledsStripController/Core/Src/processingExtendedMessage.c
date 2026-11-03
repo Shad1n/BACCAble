@@ -7,9 +7,50 @@
 
 #include "processingExtendedMessage.h"
 #if defined(C1baccable)
-#include "dtc_stream_decoder.h"
-#include "dtc_ecu_results.h"
-#include "abs_c1_service.h"
+#include "processingExtendedMessage.h"
+#include "functions_C1baccable.h"
+
+/* @Shadin: ECM/BCM DTC decoder and results; original implementation preserved. */
+/* @Shadin: Moved from dtc_stream_decoder.c into the existing Gaucho extended-CAN handler. */
+/* Isolated adaptation of Gaucho's faultsConsumePayloadByte().
+ * Stage C1a: not yet wired into the active diagnostic state machine. */
+void dtcStreamReset(DtcStreamDecoder *s) { memset(s, 0, sizeof(*s)); }
+void dtcStreamConsume(DtcStreamDecoder *s, uint8_t byte) {
+    uint16_t pos = s->received++;
+    if (pos < 3u) return; /* 59 02 available-status-mask */
+    s->record[s->fill++] = byte;
+    if (s->fill != 4u) return;
+    s->fill = 0;
+    if ((s->record[3] & 0x09u) == 0u) return;
+    if (s->total != UINT16_MAX) ++s->total;
+    if (s->kept < DTC_STREAM_MAX) {
+        memcpy(s->codes[s->kept], s->record, 3);
+        ++s->kept;
+    }
+}
+uint8_t dtcStreamComplete(const DtcStreamDecoder *s, uint16_t expected) {
+    return s->received == expected && s->received >= 3u && s->fill == 0u;
+}
+
+/* @Shadin: Moved from dtc_ecu_results.c into the existing Gaucho extended-CAN handler. */
+#define DTC_ECU_CAPACITY DTC_STREAM_MAX
+#define DTC_ACTIVE_ECUS 2u
+void dtcEcuResultsReset(DtcEcuResults *r) { memset(r, 0, sizeof(*r)); }
+uint8_t dtcEcuResultsCommit(DtcEcuResults *r, const DtcStreamDecoder *s, uint8_t ecu) {
+    if (ecu >= DTC_ACTIVE_ECUS || r->count > DTC_STREAM_MAX * DTC_ACTIVE_ECUS || s->kept > DTC_STREAM_MAX) return 0;
+    if (ecu == 0u && (r->body_end != 0u || r->count != 0u)) return 0;
+    if (ecu == 1u && r->body_end != r->count) return 0;
+    uint8_t copy = (uint8_t)(s->kept < DTC_ECU_CAPACITY ? s->kept : DTC_ECU_CAPACITY);
+    for (uint8_t i = 0; i < copy; ++i)
+        memcpy(r->codes[r->count + i], s->codes[i], 3);
+    r->count = (uint8_t)(r->count + copy);
+    r->ecu_total[ecu] = s->total;
+    r->total = (uint16_t)(UINT16_MAX - r->total < s->total ? UINT16_MAX : r->total + s->total);
+    if (ecu == 0u) r->body_end = r->count;
+    r->ecm_end = r->count;
+    return 1;
+}
+
 static DtcStreamDecoder ecuDtcStream;
 static DtcEcuResults ecuDtcResults;
 uint16_t stageC1dDtcTotal(void) { return ecuDtcResults.total; }

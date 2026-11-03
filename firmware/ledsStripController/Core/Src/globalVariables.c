@@ -215,7 +215,7 @@ const char *FW_VERSION=_FW_VERSION;
 			{'M','a','i','n',' ','s','e','t','u','p',' ','m','e','n','u',' ',' ',' '}, // [ 9] MENU_MAIN_SETUP
 			{'P','a','r','a','m','s',' ','s','e','t','u','p',' ','m','e','n','u',' '}, // [10] MENU_PARAMS_SETUP
 			{'E','n','a','b','l','e',' ','H','A','S',' ',' ',' ',' ',' ',' ',' ',' '}, // [11] MENU_HAS
-			{'T','o','g','g','l','e',' ','e','x','h','a','u','s','t',' ',' ',' ',' '}, // [12] MENU_EXHAUST
+			{'T','o','g','g','l','e',' ','e','x','h','a','u','s','t',' ',' ',' ',' '}, // exhaust valves DR 11/10/2026 - was "Toggle QV Valve" | [12] MENU_EXHAUST
 			{'S','a','v','e',' ','l','o','g',' ','t','o',' ','f','i','l','e',' ',' '}, // [13] MENU_SAVE_LOG
 			{'R','e','s','e','t',' ','s','t','a','t','i','s','t','i','c','s',' ',' '}, // [14] MENU_RESET_STATISTICS
 			{'M','a','x',' ','h','o','l','d',' ','O','f','f',' ',' ',' ',' ',' ',' '}, // [15] MENU_MAX_HOLD

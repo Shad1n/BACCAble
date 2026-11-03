@@ -8,8 +8,12 @@
 #include "stageg_ign_diag.h"
 #include "processingExtendedMessage.h" /* Optional ECU status page API */
 #include "functions_C1baccable.h"
-#include "dna_stageg.h"
-#include "config_store.h" 	//<> changed by @netzmark
+#include "functions_C1baccable.h"
+#include "uart.h"
+#include "uart.h"
+#include <string.h>
+#include "functions_C1baccable.h"
+#include "functions_C1baccable.h" 	//<> changed by @netzmark
 #include "functions_Common.h" 		// added by @netzmark
  
 	extern uint32_t _end;      // Fine della sezione .bss (fornito dal linker)
@@ -21,6 +25,235 @@
 	/* @netzmark: END */
  
 #if defined(C1baccable)
+
+/* @Shadin: DNA Journal core integrated into Gaucho C1 functions.
+ * Preserve journal record format, CRC, flash addresses and commit sequence.
+ * Original implementation and comments retained below.
+ */
+#include "dna_journal.h"
+#include <string.h>
+/* Record layout, little endian, 16 bytes:
+ * magic(2), sequence(4), mode(2), complement(2), checksum(2), reserved(2), commit(2).
+ * Commit is programmed LAST; erased flash is 0xFF.
+ */
+#define MAGIC 0xD9A1u
+#define COMMIT 0xA55Au
+static int shadin_dnaj_allowed(uint8_t m) { return m==0x00 || m==0x08 || m==0x10 || m==0x30; }
+/* @Shadin: Formatting only; journal record layout and algorithms unchanged. */
+static uint16_t shadin_dnaj_get16(const uint8_t *p) {
+    return (uint16_t)p[0] | ((uint16_t)p[1]<<8);
+}
+static uint32_t shadin_dnaj_get32(const uint8_t *p) {
+    return (uint32_t)shadin_dnaj_get16(p) | ((uint32_t)shadin_dnaj_get16(p+2)<<16);
+}
+static uint16_t shadin_dnaj_crc(const uint8_t *p) {
+    uint16_t c=0xFFFF;
+    for(unsigned i=0;i<10;i++) {
+        c^=(uint16_t)p[i]<<8;
+        for(unsigned b=0;b<8;b++) c=(c&0x8000) ? (uint16_t)((c<<1)^0x1021) : (uint16_t)(c<<1);
+    }
+    return c;
+}
+static int shadin_dnaj_read_record(const dna_flash_ops *o,uint32_t a,uint32_t *seq,uint8_t *mode) {
+    uint8_t b[16];
+    if(o->read(a,b,16))return -1;
+    if(shadin_dnaj_get16(b)!=MAGIC||shadin_dnaj_get16(b+14)!=COMMIT)return 0;
+    uint16_t m=shadin_dnaj_get16(b+6);
+    if(m>255||!shadin_dnaj_allowed((uint8_t)m)||shadin_dnaj_get16(b+8)!=(uint16_t)(~m & 0xffff)||shadin_dnaj_get16(b+10)!=shadin_dnaj_crc(b))return 0;
+    *seq=shadin_dnaj_get32(b+2);
+    *mode=(uint8_t)m;
+    return 1;
+}
+static int shadin_dnaj_newest(const dna_flash_ops *o,dna_journal_state *s,uint32_t *page,uint32_t *slot) {
+    s->valid=0;
+    s->sequence=0;
+    s->mode=0xFF;
+    for(unsigned p=0;p<2;p++) {
+        uint32_t base=p ? DNA_JOURNAL_PAGE_B : DNA_JOURNAL_PAGE_A;
+        for(unsigned i=0;i<DNA_JOURNAL_PAGE_SIZE/DNA_JOURNAL_SLOT_SIZE;i++) {
+            uint32_t seq;
+            uint8_t mode;
+            int r=shadin_dnaj_read_record(o,base+i*16,&seq,&mode);
+            if(r<0)return -1;
+            if(r==1&&(!s->valid||(int32_t)(seq-s->sequence)>0)) {
+                s->valid=1;
+                s->sequence=seq;
+                s->mode=mode;
+                *page=base;
+                *slot=i;
+            }
+        }
+    }
+    return 0;
+}
+int dna_journal_load(const dna_flash_ops *o,dna_journal_state *s) {
+    uint32_t p=0,i=0;
+    if(!o||!s||!o->read)return -1;
+    return shadin_dnaj_newest(o,s,&p,&i);
+}
+static int shadin_dnaj_blank(const dna_flash_ops *o,uint32_t a) {
+    uint8_t b[16];
+    if(o->read(a,b,16))return -1;
+    for(unsigned i=0;i<16;i++)if(b[i]!=0xff)return 0;
+    return 1;
+}
+static int shadin_dnaj_write_record(const dna_flash_ops *o,uint32_t a,uint32_t seq,uint8_t mode) {
+    uint8_t b[16];
+    memset(b,0xff,sizeof b);
+    b[0]=MAGIC&255;
+    b[1]=MAGIC>>8;
+    for(unsigned i=0;i<4;i++)b[2+i]=(uint8_t)(seq>>(i*8));
+    b[6]=mode;
+    b[7]=0;
+    b[8]=(uint8_t)~mode;
+    b[9]=0xff;
+    b[10]=shadin_dnaj_crc(b)&255;
+    b[11]=shadin_dnaj_crc(b)>>8;
+    for(unsigned i=0;i<7;i++)if(o->program_halfword(a+i*2,shadin_dnaj_get16(b+i*2)))return -1;
+    return o->program_halfword(a+14,COMMIT);
+}
+int dna_journal_save(const dna_flash_ops *o,dna_journal_state *s,uint8_t mode) {
+    uint32_t page=0,slot=0;
+    if(!o||!s||!o->read||!o->erase_page||!o->program_halfword||!shadin_dnaj_allowed(mode))return -1;
+    if(shadin_dnaj_newest(o,s,&page,&slot))return -1;
+    if(s->valid&&s->mode==mode)return 0;
+    uint32_t dest=0;
+    if(s->valid) {
+        for(unsigned i=slot+1;i<128;i++) {
+            int r=shadin_dnaj_blank(o,page+i*16);
+            if(r<0)return -1;
+            if(r==1) {
+                dest=page+i*16;
+                break;
+            }
+        }
+    }
+    else {
+        for(unsigned p=0;p<2&&!dest;p++) {
+            uint32_t base=p ? DNA_JOURNAL_PAGE_B : DNA_JOURNAL_PAGE_A;
+            for(unsigned i=0;i<128;i++) {
+                int r=shadin_dnaj_blank(o,base+i*16);
+                if(r<0)return -1;
+                if(r==1) {
+                    dest=base+i*16;
+                    break;
+                }
+            }
+        }
+    }
+    if(!dest) {
+        uint32_t other=(page==DNA_JOURNAL_PAGE_A) ? DNA_JOURNAL_PAGE_B : DNA_JOURNAL_PAGE_A;
+        if(o->erase_page(other))return -1;
+        dest=other;
+    }
+    uint32_t next=s->valid ? s->sequence+1 : 1;
+    if(shadin_dnaj_write_record(o,dest,next,mode))return -1;
+    dna_journal_state verify;
+    if(dna_journal_load(o,&verify)||!verify.valid||verify.sequence!=next||verify.mode!=mode)return -1;
+    *s=verify;
+    return 1;
+}
+
+/* @Shadin: End DNA Journal core. */
+
+
+/* @Shadin: Transactional C1 settings storage integrated from config_store.c.
+ * Original storage behavior, Flash addresses, format and comments preserved.
+ * Keep config_store.h as the shared public interface.
+ */
+/* Stage G transactional C1 settings storage. Two 2-KiB pages, legacy read-only fallback.
+ * Never erase the old settings page (0x0801F800). Both copies remain independently valid.
+ * Commit halfword is written last. CRC covers all 34 parameter halfwords.
+ */
+#include "stm32f0xx_hal.h"
+#include <stddef.h>
+#define CFG_A 0x0801C800u
+#define CFG_B 0x0801D000u
+#define CFG_LEGACY 0x0801F800u
+#define CFG_MAGIC 0xC391u
+#define CFG_FORMAT 0x0001u
+#define CFG_COMMIT 0xA55Au
+#define CFG_COMMIT_OFFSET 160u
+#define CFG_DATA_OFFSET 16u
+#define CFG_SEQ_OFFSET 4u
+#define CFG_CRC_OFFSET 8u
+#define CFG_FMT_OFFSET 2u
+#define CFG_COUNT_OFFSET 10u
+#define CFG_TOTAL 34u
+#define HW(a) (*(volatile const uint16_t *)(uintptr_t)(a))
+static uint16_t shadin_cfg_crc16(const uint16_t *data) {
+    uint16_t crc=0xFFFFu;
+    for(unsigned i=0;i<CFG_TOTAL;i++) for(unsigned j=0;j<2;j++) {
+        uint8_t byte=(uint8_t)(data[i]>>(8u*j)); crc ^= (uint16_t)byte<<8;
+        for(unsigned k=0;k<8;k++) crc=(crc&0x8000u)?(uint16_t)((crc<<1)^0x1021u):(uint16_t)(crc<<1);
+    }
+    return crc;
+}
+static int shadin_cfg_read_page(uint32_t base, uint16_t *out, uint32_t *seq) {
+    if(HW(base)!=CFG_MAGIC || HW(base+CFG_FMT_OFFSET)!=CFG_FORMAT ||
+       HW(base+CFG_COUNT_OFFSET)!=CFG_TOTAL || HW(base+CFG_COMMIT_OFFSET)!=CFG_COMMIT) return 0;
+    uint16_t values[CFG_TOTAL];
+    for(unsigned i=0;i<CFG_TOTAL;i++) values[i]=HW(base+CFG_DATA_OFFSET+4u*i);
+    if(shadin_cfg_crc16(values)!=HW(base+CFG_CRC_OFFSET)) return 0;
+    if(out) for(unsigned i=0;i<CFG_TOTAL;i++) out[i]=values[i];
+    if(seq) *seq=(uint32_t)HW(base+CFG_SEQ_OFFSET) | ((uint32_t)HW(base+CFG_SEQ_OFFSET+2u)<<16);
+    return 1;
+}
+static uint32_t shadin_cfg_active_page(uint32_t *sequence) {
+    uint32_t a=0,b=0; int va=shadin_cfg_read_page(CFG_A,NULL,&a), vb=shadin_cfg_read_page(CFG_B,NULL,&b);
+    if(!va && !vb) {if(sequence) *sequence=0; return 0;}
+    uint32_t base=(!vb || (va && (int32_t)(a-b)>=0))?CFG_A:CFG_B;
+    if(sequence) *sequence=(base==CFG_A)?a:b;
+    return base;
+}
+/* Cache the validated active page for read-only menu access. Previously every
+ * readFromFlash() revalidated BOTH 34-word copies with CRC16; the menu's
+ * 33-field change check could therefore perform 66 full CRC scans per click.
+ * Invalidate after a save so subsequent reads see the newly committed copy.
+ */
+static uint8_t read_cache_valid;
+static uint32_t read_cache_base;
+uint16_t config_store_read(uint8_t index) {
+    if(index>=CFG_TOTAL) return 0xFFFFu;
+    if(!read_cache_valid) {
+        read_cache_base=shadin_cfg_active_page(NULL);
+        read_cache_valid=1u;
+    }
+    return HW(read_cache_base ? read_cache_base+CFG_DATA_OFFSET+4u*index : CFG_LEGACY+4u*index);
+}
+static int shadin_cfg_program(uint32_t address, uint16_t value) {
+    return HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD,address,value)==HAL_OK && HW(address)==value;
+}
+uint8_t config_store_save(const uint16_t *values, uint8_t count) {
+    if(!values || count!=CFG_TOTAL) return 251;
+    uint32_t seq=0, active=shadin_cfg_active_page(&seq);
+    uint32_t target=(active==CFG_A)?CFG_B:CFG_A;
+    // Do not touch the valid copy until the new copy has been committed and verified.
+    FLASH_EraseInitTypeDef erase={0}; uint32_t page_error=0;
+    erase.TypeErase=FLASH_TYPEERASE_PAGES;
+    erase.PageAddress=target;
+    erase.NbPages=1;
+    if(HAL_FLASH_Unlock()!=HAL_OK) return 254;
+    if(HAL_FLASHEx_Erase(&erase,&page_error)!=HAL_OK) {HAL_FLASH_Lock();return 254;}
+    uint32_t next=seq+1u;
+    int ok=shadin_cfg_program(target,CFG_MAGIC) && shadin_cfg_program(target+CFG_FMT_OFFSET,CFG_FORMAT) &&
+           shadin_cfg_program(target+CFG_SEQ_OFFSET,(uint16_t)next) &&
+           shadin_cfg_program(target+CFG_SEQ_OFFSET+2u,(uint16_t)(next>>16)) &&
+           shadin_cfg_program(target+CFG_COUNT_OFFSET,CFG_TOTAL) &&
+           shadin_cfg_program(target+CFG_CRC_OFFSET,shadin_cfg_crc16(values));
+    for(unsigned i=0;i<CFG_TOTAL && ok;i++) ok=shadin_cfg_program(target+CFG_DATA_OFFSET+4u*i,values[i]);
+    if(ok) ok=shadin_cfg_program(target+CFG_COMMIT_OFFSET,CFG_COMMIT);
+    HAL_FLASH_Lock();
+    if(!ok) return 255;
+    uint16_t verify[CFG_TOTAL]; uint32_t check=0;
+    if(!shadin_cfg_read_page(target,verify,&check) || check!=next) return 252;
+    for(unsigned i=0;i<CFG_TOTAL;i++) if(verify[i]!=values[i]) return 252;
+    /* A successful commit switches the active copy: refresh on next read. */
+    read_cache_valid=0u;
+    return 0;
+}
+/* @Shadin: End transactional settings storage. */
+
  
 	/* @netzmark: to create multi parameters screens */
 #if defined(C1baccable)
@@ -2857,3 +3090,372 @@ if(baccableDashboardMenuVisible) {
  
  
 #endif
+
+
+/* @Shadin: ABS C1 service and transport integrated from abs_c1_service.c.
+ * Original implementation retained for upstream-friendly C1 source organization. */
+#if defined(C1baccable)
+/* @Shadin: C1 ABS reply receiver and polling transport moved from
+ * abs_receiver.c and abs_transport.c without changing their logic. */
+void abs_receiver_init(AbsReceiver *r,uint8_t id){memset(r,0,sizeof(*r));r->id=id;r->status='B';}
+int abs_receiver_accept(AbsReceiver *r,const uint8_t frame[ABS_PROTO_FRAME],uint8_t route){
+ AbsReply x;if(abs_decode(frame,route,&x))return -1;
+ if(x.id!=r->id)return -2;
+ if(r->status=='E'||(r->status=='R'&&r->next==r->kept&&r->total_set))return -2;
+ if(x.status=='E'){r->status='E';r->reason=x.reason;return -3;}
+ if(x.status=='B')return 0;
+ if(x.kept>x.total||x.index!=r->next)return -1;
+ if(r->total_set&&(r->total!=x.total||r->kept!=x.kept))return -1;
+ if(x.index<x.kept){
+   if(!r->total_set){r->total=x.total;r->kept=x.kept;r->total_set=1;}
+   memcpy(r->codes[r->next],x.code,3);r->next++;
+   if(r->next==r->kept){r->status='R';return 2;}
+   return 1;
+ }
+ if(x.kept==0&&!r->total_set){r->total=x.total;r->kept=0;r->total_set=1;r->status='R';return 2;}
+ return -1;
+}
+
+void abs_transport_init(AbsTransport *t,uint8_t id){
+ memset(t,0,sizeof(*t));abs_receiver_init(&t->receiver,id);
+}
+int abs_transport_tick(AbsTransport *t,uint32_t now,uint8_t *index){
+ if(!t||!index)return -1;
+ if(t->timed_out||t->receiver.status=='E'||
+    (t->receiver.total_set&&t->receiver.next==t->receiver.kept))return -1;
+ if(t->poll_started&&(uint32_t)(now-t->last_poll_ms)<ABS_TRANSPORT_POLL_MS)return 0;
+ if(t->polls_without_progress>=ABS_TRANSPORT_MAX_RETRIES){t->timed_out=1;return -2;}
+ t->poll_started=1;t->last_poll_ms=now;t->polls_without_progress++;
+ *index=t->receiver.next;return 1;
+}
+int abs_transport_reply(AbsTransport *t,const uint8_t frame[ABS_PROTO_FRAME],uint8_t route){
+ if(!t||!frame)return -1;
+ if(t->timed_out)return -2;
+ int result=abs_receiver_accept(&t->receiver,frame,route);
+ if(result>0)t->polls_without_progress=0;
+ return result;
+}
+
+
+static AbsTransport service;
+static uint8_t enabled;
+static uint8_t start_pending;
+static uint8_t start_in_flight;
+static uint8_t get_in_flight;
+static uint32_t queued_at_ms;
+static uint8_t queue_wait_armed;
+#define ABS_UART_QUEUE_WAIT_MAX_MS 5000u
+static const char hex[]="0123456789ABCDEF";
+static void encode_byte(uint8_t *p, uint8_t v) { p[0]=hex[v>>4]; p[1]=hex[v&15u]; }
+void abs_c1_service_begin(uint8_t id) {
+    abs_c1_inbox_reset();
+    abs_transport_init(&service,id);
+    enabled=1u;
+    start_in_flight=0u;
+    get_in_flight=0u;
+    queue_wait_armed=0u;
+    /* Defer Start until processUART() permits actual UART traffic. */
+    start_pending=1u;
+}
+void abs_c1_service_poll(uint32_t now_ms) {
+    if (!enabled) return;
+    if (queue_wait_armed && (start_in_flight || get_in_flight) &&
+        (uint32_t)(now_ms - queued_at_ms) >= ABS_UART_QUEUE_WAIT_MAX_MS) {
+        service.timed_out=1u;
+        enabled=0u;
+        queue_wait_armed=0u;
+        return;
+    }
+    if (start_pending) {
+        /* Do not start the poll budget while the Start command is pending. */
+        uint8_t msg[4]={C2BusID,C2cmdAbsFaultsStart,0,0};
+        encode_byte(&msg[2],service.receiver.id);
+        if (!uart_try_enqueue_abs(msg,sizeof(msg))) {
+            service.timed_out=1u;
+            enabled=0u;
+            start_pending=0u;
+            return;
+        }
+        start_pending=0u;
+        start_in_flight=1u;
+        queued_at_ms=now_ms;
+        queue_wait_armed=1u;
+        /* Allow processUART() to transmit Start before scheduling Get. */
+        return;
+    }
+    if (start_in_flight) return; /* Wait until Start actually enters UART hardware. */
+    uint8_t frame[ABS_PROTO_FRAME];
+    /* A dropped reply makes the transfer incomplete: fail closed instead of
+       committing a potentially truncated DTC list. */
+    if (abs_c1_inbox_dropped() != 0u) {
+        service.timed_out = 1u;
+        enabled = 0u;
+        return;
+    }
+    while (abs_c1_inbox_pop(frame)) {
+        (void)abs_transport_reply(&service,frame,C1BusID);
+        /* Once a transfer is complete or rejected, stop consuming replies.
+           Late frames cannot alter the published terminal state. */
+        if (service.receiver.status == 'E' ||
+            (service.receiver.status == 'R' && service.receiver.total_set &&
+             service.receiver.next == service.receiver.kept)) {
+            enabled = 0u;
+            return;
+        }
+    }
+    if (abs_c1_inbox_dropped() != 0u) {
+        service.timed_out = 1u;
+        enabled = 0u;
+        return;
+    }
+    if (get_in_flight) return; /* No duplicate Get while it is queued. */
+    uint8_t index;
+    int result=abs_transport_tick(&service,now_ms,&index);
+    if (result < 0) {
+        /* Timeout or terminal transport state: do not keep polling. */
+        enabled = 0u;
+        return;
+    }
+    if(result==1) {
+        uint8_t msg[6]={C2BusID,C2cmdAbsFaultsGet,0,0,0,0};
+        encode_byte(&msg[2],service.receiver.id);
+        encode_byte(&msg[4],index);
+        if (uart_try_enqueue_abs(msg,sizeof(msg))) {
+            get_in_flight=1u;
+            queued_at_ms=now_ms;
+            queue_wait_armed=1u;
+        } else {
+        service.timed_out = 1u;
+        enabled = 0u;
+    }
+    }
+}
+void abs_c1_service_tx_started(uint8_t command, uint8_t id_hi, uint8_t id_lo, uint32_t now_ms) {
+    if (!enabled) return;
+    uint8_t expected[2];
+    encode_byte(expected, service.receiver.id);
+    if (id_hi != expected[0] || id_lo != expected[1]) return;
+    if (command == C2cmdAbsFaultsStart && start_in_flight) {
+        start_in_flight=0u;
+        queue_wait_armed=0u;
+        service.last_poll_ms=now_ms;
+        service.poll_started=1u; /* First Get after the normal poll interval. */
+    } else if (command == C2cmdAbsFaultsGet && get_in_flight) {
+        get_in_flight=0u;
+        queue_wait_armed=0u;
+        service.last_poll_ms=now_ms; /* Retry budget starts on actual transmit. */
+    }
+}
+uint8_t abs_c1_service_tx_is_current(uint8_t command, uint8_t id_hi, uint8_t id_lo) {
+    uint8_t expected[2];
+    if (!enabled) return 0u;
+    encode_byte(expected, service.receiver.id);
+    if (id_hi != expected[0] || id_lo != expected[1]) return 0u;
+    if (command == C2cmdAbsFaultsStart) return start_in_flight;
+    if (command == C2cmdAbsFaultsGet) return get_in_flight;
+    return 0u;
+}
+const AbsTransport *abs_c1_service_state(void) { return &service; }
+#else
+void abs_c1_service_begin(uint8_t id) {(void)id;}
+void abs_c1_service_poll(uint32_t now_ms) {(void)now_ms;}
+void abs_c1_service_tx_started(uint8_t command, uint8_t id_hi, uint8_t id_lo, uint32_t now_ms) {(void)command;(void)id_hi;(void)id_lo;(void)now_ms;}
+uint8_t abs_c1_service_tx_is_current(uint8_t command, uint8_t id_hi, uint8_t id_lo) {(void)command;(void)id_hi;(void)id_lo;return 0u;}
+const AbsTransport *abs_c1_service_state(void) { return 0; }
+#endif
+
+/* @Shadin: DNA StageG implementation moved from dna_stageg.c into
+ * Gaucho C1 function source. State machine and timing unchanged.
+ */
+/* Stage G v3.9.0 C1 adapter. dna_stageg_tick() is the sole restore action path. */
+#include "compile_time_defines.h"
+#if defined(C1baccable)
+#include "functions_C1baccable.h"
+#include "dna_journal.h"
+#include "functions_C1baccable.h"
+#include "stageg_ign_diag.h"
+#include <stdint.h>
+
+/* @Shadin: DNA guard implementation moved here from dna_guard.c.
+ * Original state transitions and timing are preserved verbatim. */
+#define SETTLE_MS 2000u
+#define HOLD_MS 10000u
+#define STABLE_MS 750u
+#define MANUAL_SETTLE_MS 1000u
+#define RUNNING_RPM 400u
+static int valid(uint8_t m){return m==0||m==8||m==16||m==48;}
+void dna_guard_init(dna_guard *g,uint8_t saved,uint8_t enabled){*g=(dna_guard){0};g->saved=valid(saved)?saved:255;g->enabled=enabled?1:0;g->restore_pending=g->enabled;g->candidate=255;}
+/* Apply Setup changes without an unexpected DNA restore while driving.
+ * A newly enabled feature learns a stable mode; the next power-on or
+ * confirmed ignition return arms one guarded restore. */
+void dna_guard_set_enabled(dna_guard *g, uint8_t enabled) {
+    enabled = enabled ? 1u : 0u;
+    if (g->enabled == enabled) return;
+    g->enabled = enabled;
+    g->restore_pending = 0u;
+    g->command_sent = 0u;
+    g->restore_failed = 0u;
+    g->candidate = 255u;
+    g->running_since = 0u;
+    g->manual_hold_until = 0u;
+}
+void dna_guard_arm_cycle(dna_guard *g) {
+    if (!g->enabled || g->restore_pending || g->command_sent) return;
+    g->restore_pending = 1u;
+    g->restore_failed = 0u;
+    g->enqueue_retry_used = 0u;
+    g->candidate = 255u;
+    g->running_since = 0u;
+    g->manual_hold_until = 0u;
+}
+void dna_guard_manual_selection(dna_guard *g, uint32_t now) {
+    if (!g->enabled) return;
+    g->restore_pending = 0u;
+    g->command_sent = 0u;
+    g->restore_failed = 0u;
+    g->enqueue_retry_used = 0u;
+    g->candidate = 255u;
+    g->running_since = 0u;
+    g->manual_hold_until = now + MANUAL_SETTLE_MS;
+}
+int dna_guard_restore(dna_guard *g,uint32_t now,uint16_t rpm,uint8_t actual,uint8_t *target){if(!g->enabled||!g->restore_pending)return 0;if(rpm<=RUNNING_RPM){g->running_since=0;return 0;}if(!g->running_since){g->running_since=now?now:1;return 0;}if((uint32_t)(now-g->running_since)<SETTLE_MS)return 0;g->restore_pending=0;if(!valid(g->saved)||!valid(actual)||g->saved==actual)return 0;g->command_sent=1;g->restore_target=g->saved;g->command_at=now?now:1;*target=g->saved;return 1;}
+int dna_guard_observe(dna_guard *g,uint32_t now,uint16_t rpm,uint8_t actual,uint8_t *persist){if(!g->enabled||rpm<=RUNNING_RPM||!valid(actual)||g->restore_pending)return 0;if(g->manual_hold_until && (int32_t)(now-g->manual_hold_until)<0)return 0;g->manual_hold_until=0;if(g->command_sent){if((uint32_t)(now-g->command_at)<HOLD_MS)return 0;g->command_sent=0;g->candidate=255;if(actual!=g->restore_target)g->restore_failed=1;}/* A CAN mode transition alone does not prove driver intent.
+ * On failed restoration, inhibit learning for this power cycle.
+ * A deliberate Setup OFF -> ON action re-arms learning via set_enabled(). */
+if(g->restore_failed)return 0;
+if(g->candidate!=actual){g->candidate=actual;g->candidate_since=now;return 0;}if((uint32_t)(now-g->candidate_since)<STABLE_MS||actual==g->saved)return 0;g->saved=actual;*persist=actual;return 1;}
+
+/* Re-arm once if the BH request never entered the UART TX queue.
+ * Do not claim a command was sent when the queue was full. */
+void dna_guard_restore_enqueue_failed(dna_guard *g) {
+    if (g->command_sent) {
+        g->command_sent=0u;
+        g->running_since=0u;
+        g->candidate=255u;
+        if (!g->enqueue_retry_used) {
+            g->enqueue_retry_used=1u;
+            g->restore_pending=1u;
+        } else {
+            g->restore_pending=0u;
+        }
+    }
+}
+
+static dna_guard guard;
+static dna_journal_state journal;
+static uint8_t initialized;
+static uint8_t dryrun_enabled;
+static uint8_t seen_384;
+static uint32_t last_384_ms;
+static uint8_t confirmed_return_pending;
+static volatile uint8_t manual_selection_pending;
+void dna_stageg_note_384(uint32_t millis) { seen_384=1u; last_384_ms=millis; }
+void dna_stageg_note_ignition_return(void) { if (initialized) confirmed_return_pending=1u; }
+void dna_stageg_note_manual_selection(void) { if (initialized) manual_selection_pending=1u; }
+void dna_stageg_restore_enqueue_failed(void) {
+    if (initialized) dna_guard_restore_enqueue_failed(&guard);
+}
+int dna_stageg_init(uint8_t enabled) {
+    if (dna_journal_load(&dna_stm32_flash_ops, &journal)) return -1;
+    dna_guard_init(&guard, journal.valid ? journal.mode : 0xFFu, enabled);
+    seen_384 = 0u;
+    confirmed_return_pending = 0u;
+    manual_selection_pending = 0u;
+    dryrun_enabled = enabled ? 1u : 0u;
+    initialized = 1u;
+    return 0;
+}
+void dna_stageg_set_enabled(uint8_t enabled) {
+    dryrun_enabled = enabled ? 1u : 0u;
+    if (initialized) dna_guard_set_enabled(&guard, enabled);
+}
+/* Read-only eligibility check. No guard mutation, flash writes, or CAN TX. */
+int dna_stageg_dryrun_target(uint8_t *target) {
+    if (!initialized || !dryrun_enabled || !journal.valid || !target) return 0;
+    if (journal.mode != 0x00u && journal.mode != 0x08u &&
+        journal.mode != 0x10u && journal.mode != 0x30u) return 0;
+    *target = journal.mode;
+    return 1;
+}
+int dna_stageg_tick(uint32_t millis, uint16_t rpm, uint8_t observed_mode, uint8_t *restore_target) {
+    uint8_t save_mode = 0xFFu;
+    if (!initialized || !restore_target) return -1;
+    if (confirmed_return_pending) {
+        confirmed_return_pending = 0u;
+        dna_guard_arm_cycle(&guard);
+    }
+    if (manual_selection_pending) {
+        manual_selection_pending = 0u;
+        dna_guard_manual_selection(&guard, millis);
+        stageg_ign_diag_note_manual_selection();
+    }
+    /* Never restore or learn from an uninitialized/stale CAN mode. */
+    if (!seen_384 || (uint32_t)(millis-last_384_ms)>500u) return 0;
+    if (dna_guard_restore(&guard, millis, rpm, observed_mode, restore_target)) {
+        stageg_ign_diag_note_guard_request(*restore_target);
+        return 1;
+    }
+    if (dna_guard_observe(&guard, millis, rpm, observed_mode, &save_mode)) {
+        if (dna_journal_save(&dna_stm32_flash_ops, &journal, save_mode) < 0) {
+            /* Guard updated its RAM copy before flash commit. Restore the
+             * last committed value so the same stable mode can be retried. */
+            guard.saved = journal.valid ? journal.mode : 0xFFu;
+            return -2;
+        }
+        return 2;
+    }
+    return 0;
+}
+#endif
+
+/* @Shadin: STM32 DNA Journal Flash adapter relocated from dna_journal_stm32.c; implementation unchanged. */
+#include "dna_journal.h"
+#include "compile_time_defines.h"
+#if defined(C1baccable)
+#include "stm32f0xx_hal.h"
+#include <string.h>
+
+/* These pages are reserved candidates; validate against every flash consumer
+ * and linker memory map before enabling firmware writes. */
+static int in_reserved_pages(uint32_t address, size_t length)
+{
+    uint64_t start = (uint64_t)address;
+    uint64_t end = start + (uint64_t)length;
+    return (start >= DNA_JOURNAL_PAGE_A && end <= (uint64_t)DNA_JOURNAL_PAGE_A + DNA_JOURNAL_PAGE_SIZE) ||
+           (start >= DNA_JOURNAL_PAGE_B && end <= (uint64_t)DNA_JOURNAL_PAGE_B + DNA_JOURNAL_PAGE_SIZE);
+}
+static int flash_read(uint32_t address, uint8_t *out, size_t length)
+{
+    if (!out || !in_reserved_pages(address, length)) return -1;
+    memcpy(out, (const void *)(uintptr_t)address, length);
+    return 0;
+}
+static int flash_halfword(uint32_t address, uint16_t value)
+{
+    if ((address & 1u) || !in_reserved_pages(address, 2u)) return -1;
+    if (HAL_FLASH_Unlock() != HAL_OK) return -1;
+    HAL_StatusTypeDef status = HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, address, value);
+    HAL_FLASH_Lock();
+    if (status != HAL_OK) return -1;
+    return (*(volatile const uint16_t *)(uintptr_t)address == value) ? 0 : -1;
+}
+static int flash_erase(uint32_t address)
+{
+    if ((address != DNA_JOURNAL_PAGE_A && address != DNA_JOURNAL_PAGE_B) ||
+        !in_reserved_pages(address, DNA_JOURNAL_PAGE_SIZE)) return -1;
+    FLASH_EraseInitTypeDef erase = {0};
+    uint32_t page_error = 0;
+    erase.TypeErase = FLASH_TYPEERASE_PAGES;
+    erase.PageAddress = address;
+    erase.NbPages = 1;
+    if (HAL_FLASH_Unlock() != HAL_OK) return -1;
+    HAL_StatusTypeDef status = HAL_FLASHEx_Erase(&erase, &page_error);
+    HAL_FLASH_Lock();
+    if (status != HAL_OK) return -1;
+    for (uint32_t offset = 0; offset < DNA_JOURNAL_PAGE_SIZE; offset += 2u)
+        if (*(volatile const uint16_t *)(uintptr_t)(address + offset) != 0xFFFFu) return -1;
+    return 0;
+}
+const dna_flash_ops dna_stm32_flash_ops = {flash_read, flash_halfword, flash_erase};
+
+#endif /* C1baccable */

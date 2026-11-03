@@ -35,3 +35,6 @@ v3.9.1.2
 v3.9.2.3
 - Based on Gaucho's master v3.9.2
 - Menu indexing structure changes to easy reorder
+
+v3.9.2.4
+- Integrating the newly developed code and file structure into the Gaucho code structure.

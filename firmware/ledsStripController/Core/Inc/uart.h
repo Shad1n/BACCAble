@@ -1,6 +1,9 @@
 #ifndef _UART_H
 	#define _UART_H
 
+/* @Shadin: Shared ABS constants are declared in compile_time_defines.h. */
+#include "compile_time_defines.h"
+
 	#include "stm32f0xx_hal.h"
 	#include "globalVariables.h"
 
@@ -108,4 +111,23 @@ uint8_t tryAddToUARTSendQueue(const uint8_t *data, size_t length);
 		void processUART1(void);
 	#endif
 	void processUART();
+
+/* @Shadin: Shared ABS UART protocol declarations consolidated from abs_proto.h. */
+#include <stdint.h>
+#include <stddef.h>
+typedef struct { uint8_t id, status, reason, total, kept, index, code[3]; } AbsReply;
+/* Format: route, command, id hex(2), status, reason, total hex(2), kept hex(2), index hex(2), DTC hex(6), pad. */
+int abs_encode(uint8_t out[ABS_PROTO_FRAME], uint8_t route, const AbsReply *r);
+int abs_decode(const uint8_t in[ABS_PROTO_FRAME], uint8_t route, AbsReply *r);
+
+
+/* @Shadin: Interface moved from abs_c1_inbox.h; original declarations and comments preserved. */
+#include <stdint.h>
+/* @Shadin: ABS declarations provided below. */
+/* Interrupt-safe single producer / single consumer FIFO. */
+#define ABS_C1_INBOX_CAPACITY 8u
+void abs_c1_inbox_reset(void);
+int abs_c1_inbox_push_isr(const uint8_t *frame);
+int abs_c1_inbox_pop(uint8_t frame[ABS_PROTO_FRAME]);
+uint16_t abs_c1_inbox_dropped(void);
 #endif

@@ -16,4 +16,8 @@ typedef struct {
 typedef struct { uint8_t mode; uint32_t sequence; uint8_t valid; } dna_journal_state;
 int dna_journal_load(const dna_flash_ops *ops, dna_journal_state *state);
 int dna_journal_save(const dna_flash_ops *ops, dna_journal_state *state, uint8_t mode);
+/* @Shadin: STM32 adapter declaration consolidated; implementation remains separate. */
+#if defined(C1baccable)
+extern const dna_flash_ops dna_stm32_flash_ops;
+#endif
 #endif

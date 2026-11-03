@@ -38,4 +38,29 @@ void stageC1cPagePrev(void);
 #endif
 /* STAGE_C1C_OPTIONAL_ECU_STATUS_UI END */
 
+/* @Shadin: Interface moved from dtc_stream_decoder.h; original declarations and comments preserved. */
+#include <stdint.h>
+#define DTC_STREAM_MAX 20u
+typedef struct {
+    uint8_t record[4], fill;
+    uint16_t received, total, kept;
+    uint8_t codes[DTC_STREAM_MAX][3];
+} DtcStreamDecoder;
+void dtcStreamReset(DtcStreamDecoder *s);
+void dtcStreamConsume(DtcStreamDecoder *s, uint8_t byte);
+uint8_t dtcStreamComplete(const DtcStreamDecoder *s, uint16_t expected);
+/* @Shadin: ECU result declarations consolidated with the DTC decoder interface. */
+typedef struct {
+    uint8_t codes[DTC_STREAM_MAX * 2u][3];
+    uint8_t count;
+    uint8_t body_end;
+    uint8_t ecm_end;
+    uint16_t total;
+    uint16_t ecu_total[2]; /* accepted DTCs per active ECU */
+} DtcEcuResults;
+void dtcEcuResultsReset(DtcEcuResults *r);
+/* Call only after complete, validated ECU response. Returns 0 for invalid ECU/order. */
+uint8_t dtcEcuResultsCommit(DtcEcuResults *r, const DtcStreamDecoder *s, uint8_t ecu);
+
+
 #endif /* INC_PROCESSINGEXTENDEDMESSAGE_H_ */
