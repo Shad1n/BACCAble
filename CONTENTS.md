@@ -1,12 +1,17 @@
 # BACCAble – Contents and Development History
 
-Special thanks to [gaucho1978](https://github.com/gaucho1978/BACCAble) and [netzmark](https://github.com/netzmark/BACCAble) for their work on BACCAble.
+Special thanks to [netzmark](https://github.com/netzmark/BACCAble) and [gaucho1978](https://github.com/gaucho1978/BACCAble) for their work on BACCAble.
 
-## Original integration baseline
+## Development branch origin — Netzmark's v3.7.4 merge
 
-Based on Gaucho's **BACCAble master v3.3.2** firmware (commits dated July 25, 2026).
+This development branch originated from **Netzmark's merge of the two BACCAble development lines**. Netzmark took **Gaucho's v3.7.4 firmware** as the basis and integrated his own modifications into it. **Our subsequent development started from that merged source**, rather than directly from an earlier Gaucho master release.
 
-### Excluded from the original integration
+- **Merge comparison:** [Netzmark BACCAble — Gaucho v3.7.4 integration](https://github.com/netzmark/BACCAble/compare/5854eda3261cc004d507b100a5627f222d83eef1...aea756beaea2b72eca2c44e21a80a6afe2f60449)
+- **Starting point for our changes:** the resulting Netzmark-merged BACCAble firmware.
+
+The selections listed below document the functionality retained or excluded in our subsequent integration work; they should not be interpreted as a complete description of the upstream merge itself.
+
+### Excluded from our integration
 
 - **Netzmark's IBS hack:** Did not work reliably in our tests.
 - **Netzmark's HSE:** Purpose and behavior were not evaluated.
@@ -15,7 +20,7 @@ Based on Gaucho's **BACCAble master v3.3.2** firmware (commits dated July 25, 20
 - **Gaucho's park mirror:** Netzmark's implementation was preferred.
 - **Gaucho's 4WD improvement:** Not tested on the RWD vehicle; at that stage, it conflicted with Netzmark's large-display code.
 
-### Included in the original integration
+### Included in our integration
 
 **From Netzmark:**
 
@@ -32,7 +37,7 @@ Based on Gaucho's **BACCAble master v3.3.2** firmware (commits dated July 25, 20
 - ELM327 (tested and responsive).
 - Updated `user_config.h` configuration support.
 
-**From Shadin:**
+**From Shadin71:**
 
 - Parameter-setting refinements, including extended parameter pairs and rearrangement.
 - Longer menu labels.
@@ -50,10 +55,10 @@ Based on Gaucho's **BACCAble master v3.3.2** firmware (commits dated July 25, 20
 
 ### v3.9.2.3
 
-- Based on Gaucho's master **v3.9.2**.
+- Integrated the fix for incorrect parameter display from Gaucho's **v3.9.2** firmware.
 - Reworked menu indexing to simplify future menu reordering.
 
-### v3.9.2.4 — Stage 18 VERIFIED
+### v3.9.2.4
 
 - Integrated the newly developed functionality and reorganized files closer to Gaucho's original source-code structure.
 - Consolidated diagnostic, DNA Memory and supporting code into existing firmware modules where practical.
@@ -63,4 +68,4 @@ Based on Gaucho's **BACCAble master v3.3.2** firmware (commits dated July 25, 20
 
 For an overview of the major functional changes and validation results, see [DEVELOPMENT_SUMMARY.md](DEVELOPMENT_SUMMARY.md).
 
-> **Note:** The inclusion/exclusion lists above describe the **original integration baseline**. They are historical decisions, not necessarily the feature set or upstream implementation status of v3.9.2.4.
+> **Note:** The inclusion/exclusion lists above describe **historical integration decisions after the Netzmark v3.7.4 merge**. They are not necessarily a description of the complete merge, the current v3.9.2.4 feature set, or Gaucho's present upstream implementation.
