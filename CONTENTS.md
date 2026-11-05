@@ -64,7 +64,7 @@ The selections listed below document the functionality retained or excluded in o
 - Consolidated diagnostic, DNA Memory and supporting code into existing firmware modules where practical.
 - Completed all C1/C2/BH builds and the final in-car regression: **7 PASS, 2 SKIP, 0 FAIL** (Main/Features menu and Front Brake were not retested in that final run).
 
-### v3.9.2.5 — VERIFIED (archived reference)
+### v3.9.2.5
 
 - User-confirmed vehicle operation of DTC Log with simplified numbering, persistence and protected clearing.
 - Reduced C1 SRAM footprint through optional LED compilation and Flash-resident immutable CAN templates.
@@ -73,7 +73,7 @@ The selections listed below document the functionality retained or excluded in o
 - Historical release details, validation and C1 RAM measurements: [DEVELOPMENT_SUMMARY.md](DEVELOPMENT_SUMMARY.md), section 10. Consistency Maintenance NoLegacy and its 16/16 reported in-car PASS are documented in section 11.
 
 
-### v3.9.2.6 — VERIFIED (current reference)
+### v3.9.2.6
 
 - Promoted the **Flash Consistency – No LED UI** source as the new development reference at the user's explicit request (2026-11-05). This is an acceptance decision, not a claim of new STM32CubeIDE builds or vehicle tests for this exact final source.
 - Preserved the v3.9.2.5 NoLegacy improvements (Flash parameter ordering, standard Reverse Mute 0/1, C1/C2/BH and 18/30 display compatibility, UDS bounds, and previously reported **16/16 PASS** in-car regression).
