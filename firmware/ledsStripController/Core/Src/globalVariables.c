@@ -29,10 +29,10 @@ const uint8_t baccableFeatureOrder[] = {
     MENU_HAS,
     MENU_EXHAUST,
     MENU_MAX_HOLD,
-    MENU_RESET_STATISTICS,
-    MENU_SAVE_LOG,
     MENU_READ_FAULTS,
-    MENU_CLEAR_FAULTS
+    MENU_CLEAR_FAULTS,
+    MENU_CLEAR_DTC_LOG,
+    MENU_RESET_STATISTICS
 };
 
 /* Counts follow the arrays automatically when menu items are moved. */
@@ -61,7 +61,8 @@ const char *FW_VERSION=_FW_VERSION;
 	uint32_t last_queued_serial_to_schizzaForte_msg_time=TIMING__ALL___SERIAL_IGNORE_WINDOW_MS;
 	uint8_t playMotorJingle=0; //position of the execution of the jingle. set to 255 to play jingle
 
-	uint8_t jingleArray[255] = {
+	/* @Shadin: Immutable jingle lookup belongs in Flash, not scarce C1 SRAM. */
+	const uint8_t jingleArray[255] = {
 	    // 0 ×10
 	    0,0,0,0,0,0,0,0,0,0,
 
@@ -162,14 +163,16 @@ const char *FW_VERSION=_FW_VERSION;
 	uint8_t immobilizerEnabled=1; //parameter stored in ram, so that we can change it dinamically
 	uint8_t panicAlarmActivated=0; //indicates if the panic alarm was activated during last... 10 minutes (ToBeVerified)
 	//the following 2 arrays declares: RFHUB reset (first message) and panic alarm messages definition (the others)
-	CAN_TxHeaderTypeDef panicAlarmStartMsgHeader[5]={
+	/* @Shadin: Immutable CAN template in Flash; bytes unchanged. */
+	const CAN_TxHeaderTypeDef panicAlarmStartMsgHeader[5]={
 			{.IDE=CAN_ID_EXT, .RTR = CAN_RTR_DATA, .ExtId=0x18DAC7F1, .DLC=3},
 			{.IDE=CAN_ID_EXT, .RTR = CAN_RTR_DATA, .ExtId=0x1E340041, .DLC=4},
 			{.IDE=CAN_ID_STD, .RTR = CAN_RTR_DATA, .StdId=0x1EF, .DLC=8},
 			{.IDE=CAN_ID_STD, .RTR = CAN_RTR_DATA, .StdId=0x1EF, .DLC=8},
 	};
 
-	uint8_t panicAlarmStartMsgData[5][8]={
+	/* @Shadin: Immutable CAN template in Flash; bytes unchanged. */
+	const uint8_t panicAlarmStartMsgData[5][8]={
 			{0x02,0x11,0x01,0x00,},
 			{0x88,0x20,0x15,0x00,},
 			{0x42,0x02,0xE2,0x00,0x00,0x00,0x01,0x56},
@@ -216,7 +219,7 @@ const char *FW_VERSION=_FW_VERSION;
 			{'P','a','r','a','m','s',' ','s','e','t','u','p',' ','m','e','n','u',' '}, // [10] MENU_PARAMS_SETUP
 			{'E','n','a','b','l','e',' ','H','A','S',' ',' ',' ',' ',' ',' ',' ',' '}, // [11] MENU_HAS
 			{'T','o','g','g','l','e',' ','e','x','h','a','u','s','t',' ',' ',' ',' '}, // exhaust valves DR 11/10/2026 - was "Toggle QV Valve" | [12] MENU_EXHAUST
-			{'S','a','v','e',' ','l','o','g',' ','t','o',' ','f','i','l','e',' ',' '}, // [13] MENU_SAVE_LOG
+			{'C','l','e','a','r',' ','D','T','C',' ','l','o','g','s',' ',' ',' '}, // [13] MENU_CLEAR_DTC_LOG @Shadin
 			{'R','e','s','e','t',' ','s','t','a','t','i','s','t','i','c','s',' ',' '}, // [14] MENU_RESET_STATISTICS
 			{'M','a','x',' ','h','o','l','d',' ','O','f','f',' ',' ',' ',' ',' ',' '}, // [15] MENU_MAX_HOLD
             {'F','e','a','t','u','r','e','s',' ','m','e','n','u',' ',' ',' ',' ',' '}, // [16] MENU_FEATURES
@@ -416,8 +419,10 @@ const char *FW_VERSION=_FW_VERSION;
 	uint8_t QV_exhaust_flap_function_enabled=0;
 	uint8_t ForceQVexhaustValveOpened=0; //state machine: 0=valve automatically selected by ECU, 1=connection request to send, 2=tester present to send, 3=temporary param overwrite, 4=return control to ECU to send
 	uint32_t lastSentQVexhaustValveMsgTime=0;
-	CAN_TxHeaderTypeDef forceQVexhaustValveMsgHeader[4] ={{.IDE=CAN_ID_EXT, .RTR = CAN_RTR_DATA, .ExtId=0x18DA17F1, .DLC=3},{.IDE=CAN_ID_EXT, .RTR = CAN_RTR_DATA, .ExtId=0x18DA17F1, .DLC=3},{.IDE=CAN_ID_EXT, .RTR = CAN_RTR_DATA, .ExtId=0x18DA17F1, .DLC=7},{.IDE=CAN_ID_EXT, .RTR = CAN_RTR_DATA, .ExtId=0x18DA17F1, .DLC=5}};
-	uint8_t forceQVexhaustValveMsgData[4][8]= {{0x02, 0x10, 0x03,},{0x02, 0x3E, 0x00,}, {0x06, 0x2F, 0x51, 0x90, 0x03, 0x00, 0x00,},{0x04, 0x2F, 0x51, 0x90, 0x00,}}; //from first to last we have: diag session, tester present, IO Control - Short Term Adjustment(open Valve) (periodic), return control to ECU
+	/* @Shadin: Immutable CAN template in Flash; bytes unchanged. */
+	const CAN_TxHeaderTypeDef forceQVexhaustValveMsgHeader[4] ={{.IDE=CAN_ID_EXT, .RTR = CAN_RTR_DATA, .ExtId=0x18DA17F1, .DLC=3},{.IDE=CAN_ID_EXT, .RTR = CAN_RTR_DATA, .ExtId=0x18DA17F1, .DLC=3},{.IDE=CAN_ID_EXT, .RTR = CAN_RTR_DATA, .ExtId=0x18DA17F1, .DLC=7},{.IDE=CAN_ID_EXT, .RTR = CAN_RTR_DATA, .ExtId=0x18DA17F1, .DLC=5}};
+	/* @Shadin: Immutable CAN template in Flash; bytes unchanged. */
+	const uint8_t forceQVexhaustValveMsgData[4][8]= {{0x02, 0x10, 0x03,},{0x02, 0x3E, 0x00,}, {0x06, 0x2F, 0x51, 0x90, 0x03, 0x00, 0x00,},{0x04, 0x2F, 0x51, 0x90, 0x00,}}; //from first to last we have: diag session, tester present, IO Control - Short Term Adjustment(open Valve) (periodic), return control to ECU
 	uint8_t numberOfReleaseButtonClicks=0;
 	uint32_t ReleasebuttonFirstClickTime=0;
 	uint32_t ReleasebuttonPressBeginTime=0;

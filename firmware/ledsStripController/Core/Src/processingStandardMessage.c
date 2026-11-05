@@ -6,6 +6,7 @@
  */
 
 #include "processingStandardMessage.h"
+#include "functions_Common.h" /* @Shadin: vehicle-date validation for BH journal */
 
 void processingStandardMessage(){
 	#if defined(C1baccable)

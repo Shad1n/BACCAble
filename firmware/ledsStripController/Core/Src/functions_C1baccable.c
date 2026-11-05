@@ -286,7 +286,12 @@ uint8_t config_store_save(const uint16_t *values, uint8_t count) {
 		immobilizerEnabled = (uint8_t)readFromFlash(1);  //parameter1 stored in ram, so that we can get it. By default Immo is enabled
 		if(immobilizerEnabled) executeDashboardBlinks=2; //shows the user that the immobilizer is active (or not)
 		function_smart_disable_start_stop_enabled=(uint8_t)readFromFlash(2);  //parameter2 stored in ram, so that we can get it. By default S&S is enabled
-		function_led_strip_controller_enabled=(uint8_t)readFromFlash(3); //By default led is disabled
+		#if defined(LED_STRIP_CONTROLLER_ENABLED)
+			function_led_strip_controller_enabled=(uint8_t)readFromFlash(3); //By default led is disabled
+		#else
+			/* @Shadin: Do not activate a persisted LED setting in a build without LED support. */
+			function_led_strip_controller_enabled=0;
+		#endif
 		function_shift_indicator_enabled=(uint8_t)readFromFlash(4); //By default it is disabled
 		shift_threshold= (uint16_t)readFromFlash(5);
 		function_ipc_my23_is_installed=	(uint8_t)readFromFlash(6);
@@ -1354,6 +1359,16 @@ if(baccableDashboardMenuVisible) {
 			} // 4wd constraint relax change 24/08/2026
 		} // 4wd constraint relax change 24/08/2026
  
+        /* @Shadin: Clear DTC log feedback only on its own menu page. */
+        if(main_dashboardPageIndex==13 && dashboard_menu_indent_level==0) {
+            const char *label=dtcLogClearOverlay();
+            if(label) {
+                memset(&uartTxMsg[1],' ',DASHBOARD_MESSAGE_MAX_LENGTH);
+                memcpy(&uartTxMsg[1],label,strlen(label));
+                addToUARTSendQueue(uartTxMsg,UART_BUFFER_SIZE);
+                return;
+            }
+        }
 		//update records if required
 		switch(main_dashboardPageIndex){
 			case 2: //READ_FAULTS_ENABLED //readFaults 12/08/2026

@@ -6,6 +6,12 @@
 TIM_HandleTypeDef htim1;
 DMA_HandleTypeDef hdma_tim1_ch4_trig_com;
 
+/* @Shadin: The LED strip is optional. In builds without LED_STRIP_CONTROLLER_ENABLED,
+ * omit its 2.6 KiB+ frame buffers and processing state. The original full
+ * implementation remains available unchanged when the option is enabled.
+ * Keep HAL TIM/DMA handles above for existing MSP/IRQ references. */
+#if defined(LED_STRIP_CONTROLLER_ENABLED)
+
 //number of leds in the strip
 #define MAX_LED 46
 #define USE_BRIGHTNESS 1
@@ -621,3 +627,11 @@ uint8_t myAbs(int8_t num){
         return num;
     }
 }
+
+#else /* LED_STRIP_CONTROLLER_ENABLED */
+/* @Shadin: No-op entry points preserve existing C1 call sites without allocating
+ * the LED strip frame buffers when the feature is not compiled in. */
+void vuMeterInit(void) {}
+void vuMeterUpdate(float volume, uint8_t colorPreset) { (void)volume; (void)colorPreset; }
+void shutdownLedsStrip(void) {}
+#endif /* LED_STRIP_CONTROLLER_ENABLED */

@@ -1,4 +1,6 @@
 #include "uart.h"
+#include "functions_Common.h" /* @Shadin: deferred BH DTC log */
+#include "processingExtendedMessage.h" /* @Shadin: C1 DTC transport ACK */
 /* @Shadin: Shared C1/C2 ABS UART protocol moved from abs_proto.c.
  * Original encoder/decoder implementation preserved unchanged.
  */
@@ -308,7 +310,14 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 
 						#if defined(C1baccable)
 							switch(rxBuffer[1]){
-                                case C1cmdAbsFaultsReply:
+                                /* @Shadin: Journal acknowledgements; ISR only sets state. */
+                                case C1cmdDtcLogAck:
+                                    dtcLogOnAckIsr(rxBuffer);
+                                    break;
+                                case C1cmdDtcLogClearResult:
+                                    dtcLogOnClearReplyIsr(rxBuffer);
+                                    break;
+								case C1cmdAbsFaultsReply:
                                     /* Do not decode DTCs in the UART interrupt.
                                      * Stage C2 integration: queued only; not yet activated. */
                                     (void)abs_c1_inbox_push_isr(rxBuffer);
@@ -467,7 +476,15 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
                                 case BHcmdReverseMuteDisabled:
                                     reverseAutoMuteEnabled=0;
                                     break;
-                                case BHcmdHuTextRestore:
+                                /* @Shadin: BH journal frames are copied, never written, in ISR. */
+                                case BHcmdDtcLogFrame:
+                                    dtcLogReceiveIsr(rxBuffer);
+                                    break;
+                                case BHcmdDtcLogClear:
+                                    if(rxBuffer[2]==0xC3u && rxBuffer[3]==0x3Cu)
+                                        dtcLogClearIsr();
+                                    break;
+							case BHcmdHuTextRestore:
 									bhHuTextRestoreRequest = 1;
 									break;
 							case BHcmdDnaMemoryRestore:
@@ -579,9 +596,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 									break;
 								case C2_Bh_cmdFunction_ESC_TC_Enabled:
 									function_esc_tc_customizator_enabled=1;
-									break;
-								case C2_Bh_cmdFunction_Save_Log_to_File:
-									saveToFilesystem();
 									break;
 								case C2_Bh_cmdSnifferDisabled: //sniffer function 24/08/2026
 									snifferStop();

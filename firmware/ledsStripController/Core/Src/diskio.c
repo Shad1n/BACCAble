@@ -75,6 +75,7 @@ typedef struct FlashPage
 FlashPage* new_flash_page()
 {
     FlashPage *fp = (FlashPage *)malloc(sizeof(FlashPage));
+    if (!fp) return NULL; /* @Shadin: never dereference a failed allocation */
     for (int j = 0; j < SECTORS_PER_PAGE; j++)
     {
         fp->sectors[j] = 0;
@@ -125,6 +126,7 @@ DRESULT disk_write(
         if (fp == NULL)
         {
             fp = new_flash_page();
+            if (!fp) {ret = HAL_ERROR; break;} /* @Shadin: abort safely */
             fp_head = fp;
         }
         else
@@ -132,6 +134,7 @@ DRESULT disk_write(
             if (fp->page_start != page_address)
             {
                 FlashPage *new_fp = new_flash_page();
+                if (!new_fp) {ret = HAL_ERROR; break;} /* @Shadin */
                 fp->next = new_fp;
                 fp = new_fp;
             }
@@ -142,7 +145,7 @@ DRESULT disk_write(
         fp->sector_data_index[sector_relative_pos] = i * FF_MIN_SS;
     }
 
-    FlashPage *iter = fp_head;
+    FlashPage *iter = (ret == HAL_OK) ? fp_head : NULL;
     while (iter)
     {
         ret = HAL_FLASH_Unlock();
@@ -190,6 +193,7 @@ DRESULT disk_write(
         }
 
         HAL_FLASH_Lock();
+        if (ret != HAL_OK) break; /* @Shadin: do not program another page on failure */
 
         iter = iter->next;
     }

@@ -20,6 +20,15 @@ uint32_t stageC1dDtcTimeoutMs(void);
 uint8_t stageC1cDtcIsEcmIndex(uint8_t index);
 uint16_t stageC1dDtcTotal(void);
 void stageC2AbsUpdate(void);
+/* @Shadin: Snapshot of completed manual diagnostic requests, sent to BH. */
+void dtcLogManualReadBegin(void);
+void dtcLogManualClearBegin(void);
+void dtcLogRequestClear(void);
+void dtcLogOnAckIsr(const uint8_t *frame);
+void dtcLogOnClearReplyIsr(const uint8_t *frame);
+void dtcLogService(void);
+const char *dtcLogClearOverlay(void);
+
 uint8_t stageC2AbsIndex(uint8_t index);
 uint16_t stageC2DtcTotal(void);
 #endif

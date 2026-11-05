@@ -54,6 +54,13 @@ int main(void){
 			if(!elm327_is_enabled())
 		#endif
 		processUART();
+        /* @Shadin: Manual DTC journal TX/RX + deferred Flash work; ISR never calls FatFs. */
+#if defined(C1baccable)
+        dtcLogService();
+#elif defined(BHbaccable)
+        dtcLogStorageService();
+#endif
+
 
 		#if defined(C1baccable) //elm327 function 26/08/2026
 			elm327UsbStartIfRequested();		//usb bring up is done here, never from an interrupt

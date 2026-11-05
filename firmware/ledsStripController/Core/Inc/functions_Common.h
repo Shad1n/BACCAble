@@ -18,9 +18,16 @@
 	void system_irq_enable(void);
 	void system_hex32(char *out, uint32_t val);
 	void Error_Handler(uint16_t halfPeriod);
-	void saveToFilesystem(void);
 
 	void storage_init(void);
+
+    /* @Shadin: Manual diagnostic event journal on BH USB Mass Storage. */
+#if defined(BHbaccable)
+    void dtcLogReceiveIsr(const uint8_t *frame);
+    void dtcLogClearIsr(void);
+#endif
+    void dtcLogStorageService(void);
+
 	
 	/* Section added by @netzmark for "appendFloat" related to printf improvement - BEGIN */
 	void appendFloatRightAligned(char* result,

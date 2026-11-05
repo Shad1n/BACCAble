@@ -52,7 +52,8 @@
 	void can_set_bitrate(enum can_bitrate bitrate);
 	void can_set_silent(uint8_t silent);
 	void can_set_autoretransmit(uint8_t autoretransmit);
-	uint32_t can_tx(CAN_TxHeaderTypeDef *tx_msg_header, uint8_t *tx_msg_data);
+	/* @Shadin: CAN queue copies inputs; const permits immutable message templates in Flash. */
+	uint32_t can_tx(const CAN_TxHeaderTypeDef *tx_msg_header, const uint8_t *tx_msg_data);
 	uint32_t can_rx(CAN_RxHeaderTypeDef *rx_msg_header, uint8_t *rx_msg_data);
 
 

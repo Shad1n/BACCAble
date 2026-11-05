@@ -206,6 +206,180 @@ uint16_t stageC2DtcTotal(void) {
 }
 #endif
 
+
+/* @Shadin: Manual Read/Clear faults journal sender. Uses the existing C1
+ * diagnostic snapshots and the standard UART send queue. Stop-and-wait ACKs
+ * prevent queue overflow; none of these frames change vehicle CAN traffic. */
+#if defined(C1baccable) && STAGE_C1C_OPTIONAL_ECU_STATUS_UI
+#define DTC_LOG_EVENT_DEPTH 2u
+#define DTC_LOG_EVENT_MAX 60u
+/* @Shadin: ECU is derived from per-ECU counts, avoiding a duplicate ECU byte per DTC. */
+typedef struct {
+    uint8_t kind, id, count[3], status[3], n;
+    uint8_t code[DTC_LOG_EVENT_MAX][3]; /* @Shadin: preserve all 24 DTC bits */
+} DtcLogEvent;
+static DtcLogEvent dtcLogEvents[DTC_LOG_EVENT_DEPTH];
+static uint8_t dtcLogHead, dtcLogTail, dtcLogCount, dtcLogId;
+static uint8_t dtcLogReadStarted;
+static uint8_t dtcLogIndex, dtcLogTxPending, dtcLogAttempts;
+static uint32_t dtcLogLastTx;
+static volatile uint8_t dtcLogAckPending, dtcLogAckId, dtcLogAckIndex, dtcLogAckStatus;
+static volatile uint8_t dtcLogClearReplyPending, dtcLogClearReplyStatus;
+static uint8_t dtcLogClearWaiting;
+static uint32_t dtcLogClearRequestTime;
+static uint8_t dtcLogOverlayState;
+static uint32_t dtcLogOverlayTime;
+
+void dtcLogManualReadBegin(void) { dtcLogReadStarted=1u; }
+static DtcLogEvent *dtcLogAddEvent(uint8_t kind) {
+    if(dtcLogCount>=DTC_LOG_EVENT_DEPTH)return NULL;
+    DtcLogEvent *event=&dtcLogEvents[dtcLogTail];
+    memset(event,0,sizeof(*event));
+    event->kind=kind;
+    event->id=++dtcLogId;
+    dtcLogTail=(uint8_t)((dtcLogTail+1u)%DTC_LOG_EVENT_DEPTH);
+    ++dtcLogCount;
+    return event;
+}
+void dtcLogManualClearBegin(void) {
+    /* Requested means only user action occurred; ECU success is unverified. */
+    (void)dtcLogAddEvent('C');
+}
+void dtcLogOnAckIsr(const uint8_t *frame) {
+    uint8_t check=0x5Au;
+    for(uint8_t i=0u;i<5u;++i)check^=frame[i];
+    if(check!=frame[5])return;
+    dtcLogAckId=frame[2];dtcLogAckIndex=frame[3];
+    dtcLogAckStatus=frame[4];dtcLogAckPending=1u;
+}
+void dtcLogOnClearReplyIsr(const uint8_t *frame) {
+    if((uint8_t)(frame[0]^frame[1]^frame[2]^0x5Au)!=frame[3])return;
+    dtcLogClearWaiting=0u;
+    dtcLogClearReplyStatus=frame[2];dtcLogClearReplyPending=1u;
+}
+const char *dtcLogClearOverlay(void) {
+    if(!dtcLogOverlayState || (uint32_t)(currentTime-dtcLogOverlayTime)>2000u)
+        return NULL;
+    return dtcLogOverlayState==1u?"Log cleared":"Clear failed";
+}
+void dtcLogRequestClear(void) {
+    /* @Shadin: Never delete while an earlier manual event is still in transit. */
+    if(dtcLogCount || dtcLogReadStarted || dtcLogClearWaiting) {
+        dtcLogClearReplyStatus=0u;dtcLogClearReplyPending=1u;return;
+    }
+    const uint8_t clearLogCmd[4] = {BhBusID, BHcmdDtcLogClear, 0xC3u, 0x3Cu};
+    if(tryAddToUARTSendQueue(clearLogCmd, sizeof(clearLogCmd))) {
+        dtcLogClearWaiting=1u;
+        dtcLogClearRequestTime=currentTime;
+    } else {dtcLogClearReplyStatus=0u;dtcLogClearReplyPending=1u;}
+}
+static void dtcLogRemoveEvent(void) {
+    if(!dtcLogCount)return;
+    dtcLogHead=(uint8_t)((dtcLogHead+1u)%DTC_LOG_EVENT_DEPTH);
+    --dtcLogCount;
+    dtcLogIndex=0u;dtcLogTxPending=0u;dtcLogAttempts=0u;
+}
+static void dtcLogFinishRead(void) {
+    if(!dtcLogReadStarted)return;
+    stageC2AbsUpdate();
+    for(uint8_t i=0u;i<3u;++i)
+        if(c1cStatus[i]==C1C_ECU_WAIT || c1cStatus[i]==C1C_ECU_NOT_TESTED)return;
+    dtcLogReadStarted=0u;
+    DtcLogEvent *e=dtcLogAddEvent('R');
+    if(!e)return;
+    for(uint8_t i=0u;i<3u;++i) {
+        e->status[i]=(uint8_t)c1cStatus[i];
+        e->count[i]=stageC1cStatusDtcCount(i);
+        if(e->count[i]>20u)e->count[i]=20u;
+        /* @Shadin: High status bit marks more DTCs than the 20-code ECU cap. */
+        uint16_t found=(i==0u)?ecuDtcResults.ecu_total[0]:
+                       (i==1u)?ecuDtcResults.ecu_total[1]:0u;
+        if(i==2u) {
+            const AbsTransport *t=abs_c1_service_state();
+            if(t && absResultCommitted)found=t->receiver.total;
+        }
+        if(found>e->count[i])e->status[i]|=0x80u;
+    }
+    uint8_t offset=0u;
+    for(uint8_t ecu=0u;ecu<3u;++ecu) {
+        for(uint8_t i=0u;i<e->count[ecu] && e->n<DTC_LOG_EVENT_MAX;++i) {
+            /* @Shadin: ECU is reconstructed from the stored per-ECU counts on TX. */
+            memcpy(e->code[e->n], faultsDTCbytes[offset+i], 3u);
+            ++e->n;
+        }
+        offset=(uint8_t)(offset+e->count[ecu]);
+    }
+}
+void dtcLogService(void) {
+    dtcLogFinishRead();
+    if(elm327_is_enabled() || lowConsumeIsActive)return;
+    if(dtcLogClearWaiting && (uint32_t)(currentTime-dtcLogClearRequestTime)>8000u) {
+        dtcLogClearWaiting=0u;
+        dtcLogClearReplyStatus=0u;dtcLogClearReplyPending=1u;
+    }
+    if(dtcLogClearReplyPending) {
+        uint8_t ok=dtcLogClearReplyStatus;
+        dtcLogClearReplyPending=0u;
+        /* @Shadin: 2-second feedback survives the regular menu refresh. */
+        dtcLogOverlayState=ok?1u:2u;
+        dtcLogOverlayTime=currentTime;
+        if(baccableDashboardMenuVisible && dashboard_menu_indent_level==0 && main_dashboardPageIndex==13)
+            sendMainDashboardPageToSlaveBaccable();
+    }
+    if(!dtcLogCount)return;
+    DtcLogEvent *e=&dtcLogEvents[dtcLogHead];
+    if(dtcLogAckPending) {
+        uint32_t mask=__get_PRIMASK();__disable_irq();
+        uint8_t ackId=dtcLogAckId,ackIndex=dtcLogAckIndex,ackStatus=dtcLogAckStatus;
+        dtcLogAckPending=0u;__set_PRIMASK(mask);
+        if(e->id==ackId && dtcLogIndex==ackIndex) {
+            if(ackStatus==0u) {
+                dtcLogTxPending=0u;dtcLogAttempts=0u;
+                if(dtcLogIndex==e->n+1u) {dtcLogRemoveEvent();return;}
+                ++dtcLogIndex;
+            } else if(ackStatus==2u) {dtcLogRemoveEvent();return;}
+            /* Status BUSY is retried after the backoff below. */
+        }
+    }
+    if(dtcLogTxPending && (uint32_t)(currentTime-dtcLogLastTx)<3500u)return;
+    if(dtcLogAttempts>=20u) {dtcLogRemoveEvent();return;}
+    uint8_t frame[12]={BhBusID,BHcmdDtcLogFrame,e->id,dtcLogIndex};
+    if(dtcLogIndex==0u) {
+        frame[4]=e->kind;
+        for(uint8_t i=0u;i<3u;++i) {
+            frame[5u+i]=e->count[i];frame[8u+i]=e->status[i];
+        }
+    } else if(dtcLogIndex<=e->n) {
+        const uint8_t *code=e->code[dtcLogIndex-1u];
+        /* @Shadin: The wire protocol remains ECU + three raw DTC bytes. */
+        uint8_t record=(uint8_t)(dtcLogIndex-1u);
+        frame[4]=(record<e->count[0])?0u:
+                 (record<(uint8_t)(e->count[0]+e->count[1]))?1u:2u;
+        memcpy(&frame[5],code,3u);
+    } else {frame[4]=0xEEu;frame[5]=e->n;}
+    /* @Shadin: checksum covers raw DTC bytes (which may contain 0x00). */
+    uint8_t check=0x5Au;
+    for(uint8_t i=0u;i<11u;++i)check^=frame[i];
+    frame[11]=check;
+    if(tryAddToUARTSendQueue(frame,sizeof(frame))) {
+        dtcLogLastTx=currentTime;
+        dtcLogTxPending=1u;
+        ++dtcLogAttempts;
+    }
+}
+#else
+/* Unsupported configurations have no manual C1 diagnostic journal producer. */
+#if defined(C1baccable)
+void dtcLogManualReadBegin(void) { }
+void dtcLogManualClearBegin(void) { }
+const char *dtcLogClearOverlay(void) { return NULL; }
+void dtcLogRequestClear(void) { }
+void dtcLogOnAckIsr(const uint8_t *frame) { (void)frame; }
+void dtcLogOnClearReplyIsr(const uint8_t *frame) { (void)frame; }
+void dtcLogService(void) { }
+#endif
+#endif
+
 #include "security_access_mm10ja.h" //pumpForce test25/07/2026 - algoritmo MM10JA per calcolo key ECM
 
 

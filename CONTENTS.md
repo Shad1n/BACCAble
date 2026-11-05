@@ -64,8 +64,16 @@ The selections listed below document the functionality retained or excluded in o
 - Consolidated diagnostic, DNA Memory and supporting code into existing firmware modules where practical.
 - Completed all C1/C2/BH builds and the final in-car regression: **7 PASS, 2 SKIP, 0 FAIL** (Main/Features menu and Front Brake were not retested in that final run).
 
+### v3.9.2.5 — VERIFIED (current reference)
+
+- User-confirmed vehicle operation of DTC Log with simplified numbering, persistence and protected clearing.
+- Reduced C1 SRAM footprint through optional LED compilation and Flash-resident immutable CAN templates.
+- Conditionally hide the LED Setup menu item when the LED feature is not compiled in.
+- C1 linker MAP: 3536 B free, an improvement of 3496 B over the earlier DTC Log build.
+- Current release details, validation, memory measurements and release-label changes: [DEVELOPMENT_SUMMARY.md](DEVELOPMENT_SUMMARY.md), section 10.
+
 ## Further technical details
 
 For an overview of the major functional changes and validation results, see [DEVELOPMENT_SUMMARY.md](DEVELOPMENT_SUMMARY.md).
 
-> **Note:** The inclusion/exclusion lists above describe **historical integration decisions after the Netzmark v3.7.4 merge**. They are not necessarily a description of the complete merge, the current v3.9.2.4 feature set, or Gaucho's present upstream implementation.
+> **Note:** The inclusion/exclusion lists above describe **historical integration decisions after the Netzmark v3.7.4 merge**. They are not necessarily a description of the complete merge, the current v3.9.2.5 feature set, or Gaucho's present upstream implementation.

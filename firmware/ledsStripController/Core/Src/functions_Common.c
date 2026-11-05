@@ -8,6 +8,7 @@
 #include "functions_Common.h"
 #include "debug.h"
 #include <string.h>	// @netzmark: for strlen
+#include <stdio.h> /* @Shadin: bounded DTC log records */
 
 
 /*
@@ -372,22 +373,13 @@ static void usb_storage_sync_text(const char *name, const char *expected) {
 }
 #endif
 
-void saveToFilesystem(void){
-#ifdef ENABLE_USB_MASS_STORAGE
-    /* Legacy UART command: idempotent, no additional log files. */
-    if (f_mount(&fs, "", 1) == FR_OK) {
-        usb_storage_sync_text("HELLO.TXT", "Hello World!");
-    }
-    f_unmount("");
-#endif
-}
-
 void storage_init(void){
 #ifdef ENABLE_USB_MASS_STORAGE
     /* Preserve the existing volume and its C2/BH label. Never auto-format. */
     if (f_mount(&fs, "", 1) == FR_OK) {
         usb_storage_sync_text("VERSION.TXT", _FW_VERSION);
-        usb_storage_sync_text("HELLO.TXT", "Hello World!");
+        /* @Shadin: Retire the test file non-destructively; preserve VERSION.TXT. */
+        (void)f_unlink("HELLO.TXT");
         /* One-time migration: remove obsolete file from the local C2/BH FAT volume.
          * FR_NO_FILE is normal on subsequent boots. No format or retry loop.
          * disk_write protects reserved Flash pages; deletion failure is nonfatal. */
@@ -396,6 +388,277 @@ void storage_init(void){
     f_unmount("");
 #endif
 }
+
+
+/* @Shadin: Manual DTC event journal, using Gaucho's existing FatFs and UART.
+ * Only BH stores events. USB Mass Storage remains read-only to the host.
+ * The UART ISR copies complete frames into a one-frame inbox; all file I/O
+ * runs in the main loop. No new implementation modules or Flash layout. */
+#if defined(BHbaccable) && defined(ENABLE_USB_MASS_STORAGE)
+#define DTC_LOG_FILE "DTC_LOG.TXT"
+#define DTC_LOG_MAX_BYTES 24576u /* conservative bound, below reserved Flash area */
+#define DTC_LOG_MAX_CODES 60u
+
+typedef struct {
+    uint8_t id, action, count[3], status[3], n, got;
+    uint8_t codes[DTC_LOG_MAX_CODES][4];
+    uint8_t valid, ready;
+} DtcLogPending;
+static DtcLogPending dtcLogRx;
+static volatile uint8_t dtcLogInboxFull, dtcLogClearRequested;
+static volatile uint8_t dtcLogInbox[12];
+static uint8_t dtcLogLastId, dtcLogLastEnd, dtcLogHaveLast;
+static uint32_t dtcLogNextSequence;
+static uint8_t dtcLogSequenceLoaded;
+void dtcLogReceiveIsr(const uint8_t *frame) {
+    if (dtcLogInboxFull) return; /* sender retries on missing ACK */
+    for (uint8_t i=0; i<12u; ++i) dtcLogInbox[i]=frame[i];
+    dtcLogInboxFull=1u;
+}
+void dtcLogClearIsr(void) { dtcLogClearRequested=1u; }
+
+static void dtcLogAck(uint8_t id, uint8_t index, uint8_t status) {
+    uint8_t frame[6] = {C1BusID,C1cmdDtcLogAck,id,index,status,0u};
+    frame[5]=(uint8_t)(frame[0]^frame[1]^frame[2]^frame[3]^frame[4]^0x5Au);
+    (void)tryAddToUARTSendQueue(frame,sizeof(frame));
+}
+static void dtcLogClearAck(uint8_t success) {
+    uint8_t frame[4] = {C1BusID,C1cmdDtcLogClearResult,success,0u};
+    frame[3]=(uint8_t)(frame[0]^frame[1]^frame[2]^0x5Au);
+    (void)tryAddToUARTSendQueue(frame,sizeof(frame));
+}
+/* @Shadin: A blank line terminates a complete event. Keep reading old
+ * END-marked logs, so an upgrade never requires clearing existing records. */
+static uint8_t dtcLogNumber(const char *line, uint8_t len,
+                            uint8_t *index, uint32_t *value) {
+    uint32_t number=0u;
+    uint8_t i=*index, first=i;
+    while(i<len && line[i]>='0' && line[i]<='9') {
+        uint32_t digit=(uint32_t)(line[i]-'0');
+        if(number>(UINT32_MAX-digit)/10u)return 0u;
+        number=number*10u+digit;
+        ++i;
+    }
+    if(i==first || number==0u)return 0u;
+    *index=i;*value=number;
+    return 1u;
+}
+static FRESULT dtcLogLoadSequence(FIL *f) {
+    uint8_t buf[64]; UINT n=0u;
+    uint32_t max=0u, pending=0u;
+    FSIZE_t position=0u, lastComplete=0u;
+    char line[32];
+    uint8_t used=0u, tooLong=0u, sawHeader=0u;
+    FRESULT rc=f_lseek(f,0u);
+    if(rc!=FR_OK)return rc;
+    while((rc=f_read(f,buf,sizeof(buf),&n))==FR_OK && n!=0u) {
+        for(UINT i=0u;i<n;++i) {
+            ++position;
+            if(buf[i]=='\n') {
+                if(!tooLong && used==0u && pending!=0u) {
+                    /* @Shadin: The empty separator line is the commit marker. */
+                    if(pending>max)max=pending;
+                    lastComplete=position;
+                    pending=0u;
+                } else if(!tooLong && used>=5u && memcmp(line,"END ",4u)==0) {
+                    /* Legacy END #00000001 and END 1. remain readable. */
+                    uint8_t index=(line[4]=='#')?5u:4u;
+                    uint32_t value=0u;
+                    if(dtcLogNumber(line,used,&index,&value) &&
+                       ((index==used) ||
+                        (index+1u==used && line[index]=='.'))) {
+                        if(value>max)max=value;
+                        lastComplete=position;
+                        pending=0u;
+                    }
+                } else if(!tooLong && used>=14u) {
+                    uint8_t index=0u;
+                    uint32_t value=0u;
+                    if(dtcLogNumber(line,used,&index,&value) &&
+                       index+2u<used && line[index]=='.' && line[index+1u]==' ' &&
+                       ((used-index-2u==11u && memcmp(line+index+2u,"Read faults",11u)==0) ||
+                        (used-index-2u==12u && memcmp(line+index+2u,"Clear faults",12u)==0))) {
+                        pending=value;
+                        sawHeader=1u;
+                    }
+                }
+                used=0u;tooLong=0u;
+            } else if(!tooLong) {
+                if(used<sizeof(line))line[used++]=(char)buf[i];
+                else tooLong=1u;
+            }
+        }
+    }
+    if(rc!=FR_OK)return rc;
+    /* @Shadin: Discard only an interrupted trailing append, never a complete
+     * record. This prevents a partial event from being counted after restart. */
+    if(lastComplete<f_size(f) && (lastComplete!=0u || sawHeader)) {
+        rc=f_lseek(f,lastComplete);
+        if(rc!=FR_OK)return rc;
+        rc=f_truncate(f);
+        if(rc!=FR_OK)return rc;
+    }
+    dtcLogNextSequence=(max==UINT32_MAX)?1u:max+1u;
+    dtcLogSequenceLoaded=1u;
+    return FR_OK;
+}
+static FRESULT dtcLogText(FIL *f,const char *line) {
+    UINT done=0u; UINT len=(UINT)strlen(line);
+    FRESULT result=f_write(f,line,len,&done);
+    return (result==FR_OK && done==len)?FR_OK:FR_DISK_ERR;
+}
+static uint8_t dtcLogPersist(void) {
+    if (usbConnectedToSlave) return 0u; /* never mutate FAT behind a mounted host */
+    if (f_mount(&fs,"",1)!=FR_OK) return 2u;
+    FIL f;
+    FRESULT rc=f_open(&f,DTC_LOG_FILE,FA_READ|FA_WRITE|FA_OPEN_ALWAYS);
+    if(rc!=FR_OK) {f_unmount("");return 2u;}
+    if(!dtcLogSequenceLoaded && dtcLogLoadSequence(&f)!=FR_OK) {
+        (void)f_close(&f);f_unmount("");return 2u;
+    }
+    /* The log stays below this cap even if the flash volume advertises 64 KiB.
+     * The underlying disk_write() separately protects reserved pages. */
+    if(f_size(&f)>DTC_LOG_MAX_BYTES-2400u) {
+        (void)f_close(&f);f_unmount("");return 2u;
+    }
+    /* @Shadin: Insert a separator when appending to an older END-marked log.
+     * New-format records already finish with an empty separator line. */
+    FSIZE_t oldSize=f_size(&f);
+    uint8_t separator=0u;
+    if(oldSize!=0u) {
+        char tail[2];UINT got=0u;
+        UINT want=(oldSize>=2u)?2u:1u;
+        rc=f_lseek(&f,oldSize-want);
+        if(rc==FR_OK)rc=f_read(&f,tail,want,&got);
+        if(rc==FR_OK && got!=want)rc=FR_DISK_ERR;
+        if(rc==FR_OK)separator=(tail[want-1u]=='\n')?
+            (uint8_t)(want<2u || tail[want-2u]!='\n'):2u;
+    }
+    if(rc==FR_OK)rc=f_lseek(&f,oldSize);
+    if(rc==FR_OK && separator!=0u)
+        rc=dtcLogText(&f,(separator==2u)?"\n\n":"\n");
+    char line[100];
+    if(rc==FR_OK) {
+        (void)snprintf(line,sizeof(line),"%lu. %s\n",
+                       (unsigned long)dtcLogNextSequence,
+                       dtcLogRx.action=='R'?"Read faults":"Clear faults");
+        rc=dtcLogText(&f,line);
+    }
+    if(rc==FR_OK && dtcLogRx.action=='C')
+        rc=dtcLogText(&f,"  BCM/ECM/ABS: Request initiated\n");
+    static const char *ecuName[3]={"BCM","ECM","ABS"};
+    static const char *states[5]={"NOT_TESTED","WAIT","OK","TIMEOUT","ERROR"};
+    if(rc==FR_OK && dtcLogRx.action=='R') {
+        for(uint8_t ecu=0u;ecu<3u && rc==FR_OK;++ecu) {
+            uint8_t status=(uint8_t)(dtcLogRx.status[ecu]&0x7Fu);
+            if(status>4u)status=4u;
+            const char *state=(status==2u && dtcLogRx.count[ecu]==0u)?"No faults":states[status];
+            const char *trunc=(dtcLogRx.status[ecu]&0x80u)?" [TRUNCATED]":"";
+            (void)snprintf(line,sizeof(line),"  %s: %s, %u recorded DTC(s)%s\n",
+                ecuName[ecu],state,dtcLogRx.count[ecu],trunc);
+            rc=dtcLogText(&f,line);
+            for(uint8_t i=0u;i<dtcLogRx.n && rc==FR_OK;++i) {
+                if(dtcLogRx.codes[i][0]!=ecu)continue;
+                const uint8_t a=dtcLogRx.codes[i][1], b=dtcLogRx.codes[i][2];
+                const uint8_t c=dtcLogRx.codes[i][3];
+                const char type[4]={'P','C','B','U'};
+                (void)snprintf(line,sizeof(line),"    %c%X%X%02X-%02X\n",type[a>>6],
+                    (a>>4)&3u,a&15u,b,c);
+                rc=dtcLogText(&f,line);
+            }
+        }
+    }
+    if(rc==FR_OK)rc=dtcLogText(&f,"\n"); /* @Shadin: blank line commits event */
+    if(rc==FR_OK)rc=f_sync(&f);
+    FRESULT closed=f_close(&f);
+    f_unmount("");
+    if(rc!=FR_OK || closed!=FR_OK) {
+        /* @Shadin: Re-scan and trim a possible partial append on next use. */
+        dtcLogSequenceLoaded=0u;
+        return 2u;
+    }
+    ++dtcLogNextSequence;
+    return 1u;
+}
+
+void dtcLogStorageService(void) {
+    /* @Shadin: Do not add Flash delays to Sniffer/ELM327 streaming. */
+    if(snifferInUse)return;
+    /* Prioritize completing an already received transaction; do no disk I/O
+     * while the host has mounted the exported read-only USB volume. */
+    if(dtcLogRx.ready) {
+        uint8_t result=dtcLogPersist();
+        if(result==1u) {
+            dtcLogLastId=dtcLogRx.id;
+            dtcLogLastEnd=(uint8_t)(dtcLogRx.n+1u);
+            dtcLogHaveLast=1u;
+            dtcLogRx.ready=0u;dtcLogRx.valid=0u;
+            dtcLogAck(dtcLogLastId,dtcLogLastEnd,0u);
+        } else if(result==2u) {
+            dtcLogAck(dtcLogRx.id,(uint8_t)(dtcLogRx.n+1u),2u);
+            dtcLogRx.ready=0u;dtcLogRx.valid=0u;
+        }
+        return;
+    }
+    if(dtcLogClearRequested) {
+        dtcLogClearRequested=0u;
+        if(usbConnectedToSlave || dtcLogRx.valid) {dtcLogClearAck(0u);return;}
+        if(f_mount(&fs,"",1)!=FR_OK) {dtcLogClearAck(0u);return;}
+        FRESULT rc=f_unlink(DTC_LOG_FILE);
+        f_unmount("");
+        if(rc==FR_OK || rc==FR_NO_FILE) {
+            dtcLogSequenceLoaded=0u;
+            dtcLogClearAck(1u);
+        } else dtcLogClearAck(0u);
+        return;
+    }
+    uint8_t b[12];
+    uint32_t mask=__get_PRIMASK();__disable_irq();
+    uint8_t have=dtcLogInboxFull;
+    if(have) {for(uint8_t i=0;i<12u;++i)b[i]=dtcLogInbox[i];dtcLogInboxFull=0u;}
+    __set_PRIMASK(mask);
+    if(!have || b[0]!=BhBusID || b[1]!=BHcmdDtcLogFrame)return;
+    uint8_t check=0x5Au;
+    for(uint8_t i=0u;i<11u;++i)check^=b[i];
+    if(check!=b[11])return;
+    uint8_t id=b[2], index=b[3];
+    if(index==0u) {
+        if(dtcLogRx.valid) {
+            if(dtcLogRx.id==id)dtcLogAck(id,0u,0u);
+            else dtcLogAck(id,0u,1u);
+            return;
+        }
+        if(b[4]!='R' && b[4]!='C')return;
+        uint8_t total=(uint8_t)(b[5]+b[6]+b[7]);
+        if(total>DTC_LOG_MAX_CODES || (b[4]=='C' && total!=0u))return;
+        memset(&dtcLogRx,0,sizeof(dtcLogRx));
+        dtcLogRx.id=id;dtcLogRx.action=b[4];dtcLogRx.n=total;
+        for(uint8_t i=0;i<3u;++i) {
+            dtcLogRx.count[i]=b[5u+i];dtcLogRx.status[i]=b[8u+i];
+            if(dtcLogRx.count[i]>20u || (dtcLogRx.status[i]&0x7Fu)>4u) {dtcLogRx.valid=0u;return;}
+        }
+        dtcLogRx.valid=1u;
+        dtcLogAck(id,0u,0u);
+    } else if(dtcLogRx.valid && dtcLogRx.id==id) {
+        if(index<=dtcLogRx.n && index==dtcLogRx.got+1u) {
+            uint8_t ecu=b[4];
+            if(ecu>2u)return;
+            dtcLogRx.codes[dtcLogRx.got][0]=ecu;
+            dtcLogRx.codes[dtcLogRx.got][1]=b[5];
+            dtcLogRx.codes[dtcLogRx.got][2]=b[6];
+            dtcLogRx.codes[dtcLogRx.got][3]=b[7];
+            ++dtcLogRx.got;
+            dtcLogAck(id,index,0u);
+        } else if(index<=dtcLogRx.got) dtcLogAck(id,index,0u);
+        else if(index==dtcLogRx.n+1u && dtcLogRx.got==dtcLogRx.n && b[4]==0xEEu)
+            dtcLogRx.ready=1u; /* ACK only after durable append */
+    } else if(dtcLogHaveLast && id==dtcLogLastId && index==dtcLogLastEnd) {
+        dtcLogAck(id,index,0u); /* duplicated terminal frame, never append twice */
+    }
+}
+#else
+void dtcLogStorageService(void) { }
+#endif
 
 //sniffer function 24/08/2026 - BEGIN
 #if defined(C1baccable) || defined(C2baccable) || defined(BHbaccable)

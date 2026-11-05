@@ -64,6 +64,12 @@
 	#define BHcmdReverseMuteEnabled 0x26
 	#define BHcmdReverseMuteDisabled 0x27
 	#define BHcmdHuTextRestore 0x28 // One-shot HU text refresh after menu exit
+    /* @Shadin: Dedicated BH-only DTC journal transport. Avoid old 0x3E broadcast. */
+    #define BHcmdDtcLogFrame       0x44
+    #define BHcmdDtcLogClear       0x45
+    #define C1cmdDtcLogAck         0x43
+    #define C1cmdDtcLogClearResult 0x44
+
 	#define BHcmdDnaMemoryRestore 0x25 // Stage G: DNA selector request //second byte of the message to BH bus, identifies the request to enable park mirror and to store current mirror position
 
 	#define C2_Bh_cmdSetPedalBoostStatus		0x39 //second byte of the message to C2 and BH bus, identifies the pedal booster function status. Third byte of the message will contain its status
@@ -71,7 +77,6 @@
 	#define	C2_Bh_cmdFunctHAS_Enabled			0x3B //second byte of the message to C2 and BH bus, identifies the request to enable HAS function.
 	#define	C2_Bh_cmdFunction_ESC_TC_Disabled	0x3C //second byte of the message to C2 and BH bus, identifies the request to disable ESC/TC function.
 	#define	C2_Bh_cmdFunction_ESC_TC_Enabled	0x3D //second byte of the message to C2 and BH bus, identifies the request to disable ESC/TC function.
-	#define	C2_Bh_cmdFunction_Save_Log_to_File	0x3E //second byte of the message to C2 and BH bus, identifies the request to save log to file.
 	#define	C2_Bh_cmdSnifferDisabled			0x3F //second byte of the message to C2 and BH bus: sniffer function disabled //sniffer function 24/08/2026
 	#define	C2_Bh_cmdSnifferEnabled				0x40 //second byte of the message to C2 and BH bus: sniffer function enabled //sniffer function 24/08/2026
 

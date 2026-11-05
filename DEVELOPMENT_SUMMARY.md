@@ -1,9 +1,12 @@
-# BACCAble v3.9.2.4 – Development Summary
+> **Current reference (2026-11-05): v3.9.2.5 VERIFIED.** This document contains the current release details and preserves the historical v3.9.2.4 Stage 18 development and validation record.
+
+# BACCAble – Development Summary (v3.9.2.5 VERIFIED)
 
 **Technical overview for Gaucho**  
 **Maintainer:** Shadin  
 **Reference:** Gaucho master, incorporating Netzmark-based improvements  
-**Status:** Stage 18 – Build PASS / In-car VERIFIED
+**Current status:** v3.9.2.5 VERIFIED (vehicle operation confirmed by user)  
+**Historical baseline:** v3.9.2.4 Stage 18 – Build PASS / In-car VERIFIED
 
 ## 1. Overview
 
@@ -130,7 +133,7 @@ The intention is to make it easier to understand individual improvements without
 
 ## 8. Validation status
 
-The current reference is **BACCAble v3.9.2.4 (Stage 18)**.
+The historical reference documented in this section is **BACCAble v3.9.2.4 (Stage 18)**.
 
 All C1, C2 and BH STM32CubeIDE build configurations passed compilation.
 
@@ -168,10 +171,43 @@ The most relevant areas for future upstream consideration are:
 4. Configuration-store improvements.
 5. Menu structure, automatic indexing and display corrections.
 
-The complete v3.9.2.4 implementation provides a working baseline for examining these changes individually.
+The archived v3.9.2.4 implementation provides the historical baseline for examining these changes individually; v3.9.2.5 is the current development reference.
 
 ---
 
 ## Summary
 
 BACCAble v3.9.2.4 combines improved multi-ECU diagnostics, persistent DNA Memory, reliable configuration storage, refined user-interface behavior and a more maintainable source layout. The result has been compiled successfully for all three firmware targets and validated in the vehicle for its principal functions.
+
+---
+
+## 10. Current verified release: v3.9.2.5 (2026-11-05)
+
+Release decision: 2026-11-05. This is the current reference for subsequent development.
+The previous v3.9.2.4 Stage 18 VERIFIED version remains an archived, unchanged baseline.
+
+## Scope of v3.9.2.5
+
+- Retains the v3.9.2.4 verified functionality and C1/C2/BH configurations.
+- Manual Read faults / Clear faults events are appended to `DTC_LOG.TXT` on the existing USB storage; PC access remains read-only.
+- Entries are numbered `1.`, `2.`, etc. and separated by a blank line; no timestamp or END marker.
+- `Clear DTC logs` requires long OK, clears the log and restarts numbering at 1.
+- Features menu final four items: Read faults, Clear faults, Clear DTC logs, Reset statistics.
+- `VERSION.TXT` is preserved; obsolete `HELLO.TXT` is retired.
+- RAM optimization: immutable immobilizer/exhaust CAN templates are stored in Flash; when `LED_STRIP_CONTROLLER_ENABLED` is not defined, LED buffers and the nonfunctional LED Setup menu entry are omitted. Defining the macro restores the LED implementation and its menu.
+- The user's `user_config.h` is retained, as are 18/30-character display support and Pump Force disabled by default.
+- Source changes remain integrated into existing Gaucho modules and annotated `@Shadin`.
+
+## Validation and memory
+
+- C1/C2/BH compilation was reported successful by the user during development.
+- The user confirmed on 2026-11-05 that the current optimized firmware works correctly in the vehicle and requested VERIFIED status.
+- C1 linker MAP (provided by user) reports `.data` 2512 B, `.bss` 8800 B, heap+stack reservation 1536 B, leaving **3536 B** of the 16384 B SRAM. Compared with the earlier DTC Log build's 40 B, this is **3496 B** additional linker-side headroom.
+- Linker-side free RAM is not a measurement of peak runtime stack usage.
+- This release is a source-level version bump of the verified code; the packaged source has not been independently rebuilt or reflashed after changing the version string. Rebuild C1/C2/BH to display `BACCAble v3.9.2.5` and update `VERSION.TXT`.
+
+## Release change from last optimized build
+
+Only the default `BUILD_VERSION` string and release documentation changed. No CAN behavior, menus, buffers, storage logic, or other functional firmware code was altered for this release label.
+
+The v3.9.2.5 release details are maintained here rather than in a separate version-specific Markdown file.

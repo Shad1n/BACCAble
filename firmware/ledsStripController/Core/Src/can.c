@@ -193,7 +193,8 @@ void can_set_autoretransmit(uint8_t autoretransmit)
 
 
 // Send a message on the CAN bus
-uint32_t can_tx( CAN_TxHeaderTypeDef *tx_msg_header, uint8_t* tx_msg_data)
+/* @Shadin: Inputs are read-only; queue still receives the same copied header and bytes. */
+uint32_t can_tx(const CAN_TxHeaderTypeDef *tx_msg_header, const uint8_t *tx_msg_data)
 {
 	// Check if space available in the buffer (FIXME: wastes 1 item)
 	if( ((txqueue.head + 1) % TXQUEUE_LEN) == txqueue.tail)

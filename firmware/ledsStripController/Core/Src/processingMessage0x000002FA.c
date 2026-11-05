@@ -233,6 +233,10 @@ void processingMessage0x000002FA(){
 										//if(setup_dashboardPageIndex==8) setup_dashboardPageIndex++; //future growth
 
 										if(setup_dashboardPageIndex>=total_pages_in_setup_dashboard_menu)  setup_dashboardPageIndex=0; // make a rotative menu
+										#if !defined(LED_STRIP_CONTROLLER_ENABLED)
+											/* @Shadin: Skip the absent LED setup item, retaining the original menu indices. */
+											if(setup_dashboardPageIndex==3) setup_dashboardPageIndex=4;
+										#endif
 
 										//onboardLed_blue_on();
 										sendSetupDashboardPageToSlaveBaccable(); //send
@@ -326,6 +330,10 @@ if(main_dashboardPageIndex==2 && faultsStateMachine==3 && faultsDTCcount>0){ //r
 											//if(setup_dashboardPageIndex==2) setup_dashboardPageIndex++; //future growth
 											//if(setup_dashboardPageIndex==8) setup_dashboardPageIndex++; //future growth
 											if(setup_dashboardPageIndex>=total_pages_in_setup_dashboard_menu)  setup_dashboardPageIndex=0; // make a rotative menu
+										#if !defined(LED_STRIP_CONTROLLER_ENABLED)
+											/* @Shadin: Skip the absent LED setup item, retaining the original menu indices. */
+											if(setup_dashboardPageIndex==3) setup_dashboardPageIndex=4;
+										#endif
 											//onboardLed_blue_on();
 											sendSetupDashboardPageToSlaveBaccable(); //send
 										}
@@ -388,6 +396,10 @@ if(main_dashboardPageIndex==2 && faultsStateMachine==3 && faultsDTCcount>0){ //r
 										//if(setup_dashboardPageIndex==2) setup_dashboardPageIndex--; //future growth
 
 										if(setup_dashboardPageIndex>=total_pages_in_setup_dashboard_menu)  setup_dashboardPageIndex=total_pages_in_setup_dashboard_menu-1; // make a rotative menu
+										#if !defined(LED_STRIP_CONTROLLER_ENABLED)
+											/* @Shadin: Skip the absent LED setup item when moving backwards. */
+											if(setup_dashboardPageIndex==3) setup_dashboardPageIndex=2;
+										#endif
 										//onboardLed_blue_on();
 										sendSetupDashboardPageToSlaveBaccable(); //send
 									}
@@ -483,6 +495,10 @@ if(main_dashboardPageIndex==2 && faultsStateMachine==3 && faultsDTCcount>0){ //r
 											//if(setup_dashboardPageIndex==8) setup_dashboardPageIndex--; //future growth
 											//if(setup_dashboardPageIndex==2) setup_dashboardPageIndex--; //future growth
 											if(setup_dashboardPageIndex>=total_pages_in_setup_dashboard_menu)  setup_dashboardPageIndex=0; // make a rotative menu
+											#if !defined(LED_STRIP_CONTROLLER_ENABLED)
+												/* @Shadin: Skip the absent LED setup item on fast reverse navigation. */
+												if(setup_dashboardPageIndex==3) setup_dashboardPageIndex=2;
+												#endif
 											//onboardLed_blue_on();
 											sendSetupDashboardPageToSlaveBaccable(); //send
 										}
@@ -538,6 +554,7 @@ if(main_dashboardPageIndex==2 && faultsStateMachine==3 && faultsDTCcount>0){ //r
 								case 2: // Read Faults: long OK only; short OK must not start diagnostics
 									break;
 								case 3: //clear faults
+                                    dtcLogManualClearBegin(); // @Shadin: mark REQUESTED, not confirmed clear
 									clearFaultsRequest=255;
 									break;
 								case 4: //Immo
@@ -649,12 +666,8 @@ if(main_dashboardPageIndex==2 && faultsStateMachine==3 && faultsDTCcount>0){ //r
 								case 12: //toggle QV Exhaust Valve
 									exhaustValvesToggle();
 									break;
-								case 13: //save Log to filesystem
-									//inform Slave baccable C2 and BH
-									uint8_t tmpArr4[2]={C2_Bh_BusID,C2_Bh_cmdFunction_Save_Log_to_File};
-									addToUARTSendQueue(tmpArr4, 2);
-
-									break;
+                                case 13: // @Shadin: Clear DTC log requires LONG OK, short OK does nothing
+                                    break;
 								case 14: //reset statistics
 									resetStatisticsOnFlash();
 									break;
@@ -752,7 +765,12 @@ if(main_dashboardPageIndex==2 && faultsStateMachine==3 && faultsDTCcount>0){ //r
 											if(launch_torque_threshold>600) launch_torque_threshold=25;
 											break;
 										case 3: //{'[',' ',']','L','e','d',' ','C','o','n','t','r','o','l','l','e','r',},
+											#if defined(LED_STRIP_CONTROLLER_ENABLED)
 											function_led_strip_controller_enabled = !function_led_strip_controller_enabled;
+										#else
+											/* @Shadin: No LED toggle in builds without LED support. */
+											function_led_strip_controller_enabled = 0;
+										#endif
 											break;
 										case 4: //{'[',' ',']','S','h','i','f','t',' ','I','n','d','i','c','a','t','o','r'},
 											function_shift_indicator_enabled=!function_shift_indicator_enabled;
@@ -969,8 +987,13 @@ if(main_dashboardPageIndex==2 && faultsStateMachine==3 && faultsDTCcount>0){ //r
 
 if (baccableDashboardMenuVisible && dashboard_menu_indent_level==0 && main_dashboardPageIndex==2 && function_read_faults_enabled==1) {
                                 stageC1cDtcBegin();
+                                dtcLogManualReadBegin(); // @Shadin: one log per manual read
                                 dashboard_menu_indent_level++;
                                 sendMainDashboardPageToSlaveBaccable();
+                            } else if (baccableDashboardMenuVisible &&
+                                       dashboard_menu_indent_level==0 && main_dashboardPageIndex==13) {
+                                /* @Shadin: Clear only BH journal; menu visibility is unchanged. */
+                                dtcLogRequestClear();
                             } else {
                             baccableDashboardMenuVisible=!baccableDashboardMenuVisible; //toggle visualizazion of the menu
 

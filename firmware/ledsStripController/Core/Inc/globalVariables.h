@@ -115,7 +115,7 @@
 		extern uint8_t pedal_map_power_adapted; //adaptation depending on current map
 		extern uint32_t last_queued_serial_to_schizzaForte_msg_time;
 		extern uint8_t playMotorJingle; //position of the execution of the jingle. set to 255 to start execution
-		extern uint8_t jingleArray[255];
+		extern const uint8_t jingleArray[255]; // @Shadin: read-only Flash lookup
 
 		extern float chronometerElapsedTime_0_100_km_h; //stores time statistic in seconds
 		extern float chronometerElapsedTime_100_200_km_h; //stores time statistic in seconds
@@ -138,8 +138,8 @@
 		extern uint8_t immobilizerEnabled; //parameter stored in ram, so that we can change it dinamically
 		extern uint8_t panicAlarmActivated; //indicates if the panic alarm was activated during last... 10 minutes (ToBeVerified)
 		//the following 2 arrays declares: RFHUB reset (first message) and panic alarm messages definition (the others)
-		extern CAN_TxHeaderTypeDef panicAlarmStartMsgHeader[5];
-		extern uint8_t panicAlarmStartMsgData[5][8];
+		extern const CAN_TxHeaderTypeDef panicAlarmStartMsgHeader[5];
+		extern const uint8_t panicAlarmStartMsgData[5][8];
 
 		extern CAN_TxHeaderTypeDef dashboardBlinkMsgHeader;
 		extern uint8_t dashboardBlinkMsgData[8];
@@ -178,7 +178,7 @@
             MENU_PARAMS_SETUP = 10,
             MENU_HAS = 11,
             MENU_EXHAUST = 12,
-            MENU_SAVE_LOG = 13,
+            MENU_CLEAR_DTC_LOG = 13,
             MENU_RESET_STATISTICS = 14,
             MENU_MAX_HOLD = 15,
             MENU_FEATURES = 16,
@@ -354,8 +354,8 @@
 		extern uint8_t QV_exhaust_flap_function_enabled;
 		extern uint8_t ForceQVexhaustValveOpened;
 		extern uint32_t lastSentQVexhaustValveMsgTime;
-		extern CAN_TxHeaderTypeDef forceQVexhaustValveMsgHeader[4];
-		extern uint8_t forceQVexhaustValveMsgData[4][8];
+		extern const CAN_TxHeaderTypeDef forceQVexhaustValveMsgHeader[4];
+		extern const uint8_t forceQVexhaustValveMsgData[4][8];
 		extern uint8_t numberOfReleaseButtonClicks;
 		extern uint32_t ReleasebuttonFirstClickTime;
 		extern uint32_t ReleasebuttonPressBeginTime;
