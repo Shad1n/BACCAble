@@ -142,18 +142,16 @@ The final in-car regression produced:
 | Test | Result |
 |---|---|
 | Firmware startup | PASS |
-| Main / Features menu | SKIP |
+| Main / Features menu | PASS |
 | Read Faults | PASS |
 | Clear Faults | PASS |
 | DNA Memory | PASS |
 | Configuration persistence | PASS |
-| Front Brake | SKIP |
+| Front Brake | PASS |
 | HU Text Restore | PASS |
 | Display handling | PASS |
 
-**Final result: 7 PASS / 2 SKIP / 0 FAIL.**
-
-The two skipped areas were not retested during this final regression. They should not be interpreted as newly verified by Stage 18.
+**Final result: 9 PASS / 0 SKIP / 0 FAIL.**
 
 Earlier regression stages also covered individual diagnostic, menu and configuration functions.
 
