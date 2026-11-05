@@ -15,7 +15,7 @@
 
 	//this is used to store FW version, also shown on usb when used as slcan
 	#ifndef BUILD_VERSION //optional compile time define with -D, default: undefined
-		#define BUILD_VERSION "v3.9.2.5"  //versioning rule: first digit major change, second digit minor change (like new feature), third digit bug fix or cosmetics, fourth digit Shadin71 subversion
+		#define BUILD_VERSION "v3.9.2.6"  // @Shadin: No -dev suffix for PREBUILD or VERIFIED builds; status belongs in the release notes. versioning rule: first digit major change, second digit minor change (like new feature), third digit bug fix or cosmetics, fourth digit Shadin71 subversion
 	#endif
 	#define _FW_VERSION "BACCAble " BUILD_VERSION
 

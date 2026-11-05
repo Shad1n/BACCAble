@@ -435,7 +435,7 @@ const char *FW_VERSION=_FW_VERSION;
 	uint8_t exhaustValvesDNAmode=0xFF; //drive style the valves were last set for (function value 2), 0xFF=none yet //exhaust valves DR 11/10/2026
 	uint8_t exhaustValvesReassert=0; //1=the engine started again: the next drive style received sets the valves again (function value 2) //exhaust valves DR 11/10/2026
 	uint8_t exhaustValvesEngineRunning=0; //1=engine running (rpm went above EXHAUST_VALVES_ENGINE_RUNNING_RPM, back to 0 only at rpm 0), to detect the engine starting again //exhaust valves DR 11/10/2026
-	#if defined(REVERSE_MUTE_ENABLED) && REVERSE_MUTE_ENABLED
+	#ifdef REVERSE_MUTE_ENABLED
     uint8_t reverseMuteFunctionEnabled=1;
 #else
     uint8_t reverseMuteFunctionEnabled=0;
@@ -752,7 +752,7 @@ uint8_t usbConnectedToBH=0; //sniffer function 24/08/2026
 	volatile uint32_t audioSystemMuteFeedbackTime = 0;
 	volatile uint8_t bhHuTextRestoreRequest = 0;
 	volatile uint8_t audioSystemMuted = 0;          // 0 = play, 1 = muted
-	#if defined(REVERSE_MUTE_ENABLED) && REVERSE_MUTE_ENABLED
+	#ifdef REVERSE_MUTE_ENABLED
     uint8_t reverseAutoMuteEnabled=1;
 #else
     uint8_t reverseAutoMuteEnabled=0;

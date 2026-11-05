@@ -333,19 +333,12 @@ uint8_t config_store_save(const uint16_t *values, uint8_t count) {
 		//elm327CheckActivationTimeout()). The two modes share the single usb cdc port, so they are mutually
 		//exclusive: the setup menu already clears one when the other is enabled, this is just the safety net.
 		elm327FunctionEnabled=(uint8_t)readFromFlash(32);
-		reverseMuteFunctionEnabled=(uint8_t)readFromFlash(34);
-        if(reverseMuteFunctionEnabled==2) reverseMuteFunctionEnabled=0;
-        else if(reverseMuteFunctionEnabled==1) reverseMuteFunctionEnabled=1;
-        else {
-#if defined(REVERSE_MUTE_ENABLED) && REVERSE_MUTE_ENABLED
-            reverseMuteFunctionEnabled=1;
-#else
-            reverseMuteFunctionEnabled=0;
-#endif
-        } // legacy/reserved flash slot uses user_config default
 		dnaMemoryFunctionEnabled=(uint8_t)readFromFlash(33);
 		if(dnaMemoryFunctionEnabled>1) dnaMemoryFunctionEnabled=0;
 		dna_stageg_init(dnaMemoryFunctionEnabled);
+		/* @Shadin: Reverse Mute uses the same Boolean Flash convention (0/1)
+		 * as other ON/OFF features. Keep parameter IDs in numeric order. */
+		reverseMuteFunctionEnabled=(uint8_t)readFromFlash(34);
 		if(elm327FunctionEnabled && snifferFunctionEnabled==0) elm327Start();
 		//arise trigger to notify enabled functions to slave boards with dedicated messages,after some seconds
 		allProcessorsWakeupTime=currentTime;
@@ -1680,7 +1673,11 @@ if(baccableDashboardMenuVisible) {
 				}
 				break;
 			default:
-				memcpy(&uartTxMsg[1], dashboard_main_menu_array[main_dashboardPageIndex],UART_BUFFER_SIZE-1);
+				/* @Shadin: Preserve the UART frame size without reading past the 30-byte menu row. */
+				memset(&uartTxMsg[1], 0, UART_BUFFER_SIZE-1);
+				memcpy(&uartTxMsg[1], dashboard_main_menu_array[main_dashboardPageIndex],
+				       (UART_BUFFER_SIZE-1 < sizeof dashboard_main_menu_array[0]) ?
+				       UART_BUFFER_SIZE-1 : sizeof dashboard_main_menu_array[0]);
 				break;
 		}
  
@@ -1966,7 +1963,11 @@ if(baccableDashboardMenuVisible) {
 				break;
 		}
  
-		memcpy(&uartTxMsg[1], &dashboard_setup_menu_array[setup_dashboardPageIndex],UART_BUFFER_SIZE-1);
+		/* @Shadin: Keep the original frame length; never copy beyond the menu's row. */
+		memset(&uartTxMsg[1], 0, UART_BUFFER_SIZE-1);
+		memcpy(&uartTxMsg[1], dashboard_setup_menu_array[setup_dashboardPageIndex],
+		       (UART_BUFFER_SIZE-1 < sizeof dashboard_setup_menu_array[0]) ?
+		       UART_BUFFER_SIZE-1 : sizeof dashboard_setup_menu_array[0]);
 		//send to slave baccable
 		addToUARTSendQueue(uartTxMsg, UART_BUFFER_SIZE);
  
@@ -2002,13 +2003,12 @@ if(baccableDashboardMenuVisible) {
 				uartTxMsg[2]=' ';
 				uartTxMsg[3]=' ';
  
-				char tmpName[DASHBOARD_MESSAGE_MAX_LENGTH + 5];
- 
-				memcpy(
-				    tmpName,
-				    uds_params_array[function_is_diesel_enabled][params_setup_dashboardPageIndex - 1].name,
-				    strlen(uds_params_array[function_is_diesel_enabled][params_setup_dashboardPageIndex - 1].name) + 1
-				);
+				/* @Shadin: Match the source name field, not the smaller UART frame buffer. */
+				char tmpName[sizeof uds_params_array[0][0].name];
+				memcpy(tmpName,
+				       uds_params_array[function_is_diesel_enabled][params_setup_dashboardPageIndex - 1].name,
+				       sizeof tmpName);
+				tmpName[sizeof tmpName - 1] = '\0';
  
 				uint8_t tmpStrLen=removePatterns(tmpName); //remove special patterns from template
 				if(tmpStrLen>UART_BUFFER_SIZE-4) tmpStrLen=UART_BUFFER_SIZE-4;
@@ -2203,7 +2203,7 @@ if(baccableDashboardMenuVisible) {
 			case 15://current Drive Style
 				return currentDNAmode;
 				break;
-			case 16://free RAM
+			case 16:// @Shadin: diagnostic _end-to-MSP gap, not linker free SRAM
 				return getFreeRAM();
 				break;
 			case 17://Pedal current Map
@@ -2498,6 +2498,10 @@ if(baccableDashboardMenuVisible) {
 	/**
 	 * Calcola la RAM libera approssimativa
 	 * Ritorna: bytes di RAM libera tra heap e stack
+	 * @Shadin: Diagnostic gap from linker _end (end of .bss) to the current
+	 * MSP. It is NOT the linker MAP free SRAM, nor guaranteed allocatable RAM:
+	 * dynamic heap allocations and future stack growth are not subtracted.
+	 * Keep the legacy UDS value and label unchanged for compatibility.
 	 */
 	uint32_t getFreeRAM(void) {
 	    uint32_t stack_top;
@@ -2547,8 +2551,8 @@ if(baccableDashboardMenuVisible) {
  
 	uint8_t saveOnflash(){
         // Stage G: transactional two-copy config, never erase the legacy settings page.
-        uint8_t paramsNumber=34;
-		uint16_t params[40] = {
+		/* @Shadin: Reuse the transactional store's existing parameter count. */
+		uint16_t params[CFG_TOTAL] = {
 		  immobilizerEnabled,
 		  function_smart_disable_start_stop_enabled,
 		  function_led_strip_controller_enabled,
@@ -2581,10 +2585,10 @@ if(baccableDashboardMenuVisible) {
 		  parkSensorsMuteFunctionEnabled,  //slot 30: FRONT_PARK_MUTE
 		  snifferFunctionEnabled,  //slot 31: SNIFFER //sniffer function 24/08/2026
 		  elm327FunctionEnabled,  //slot 32: ELM327 //elm327 function 26/08/2026
-		  dnaMemoryFunctionEnabled, // slot 32: DNA Memory (33rd parameter)
-          reverseMuteFunctionEnabled ? 1u : 2u, // slot 33: 0 legacy=>ON, 1 ON, 2 OFF
+		  dnaMemoryFunctionEnabled, // @Shadin: parameter 33 (zero-based array index 32)
+		  reverseMuteFunctionEnabled, // @Shadin: parameter 34, Boolean 0=OFF / 1=ON
 		};
-        return config_store_save(params, paramsNumber);
+        return config_store_save(params, CFG_TOTAL);
     }
 
 	uint8_t resetStatisticsOnFlash(){
@@ -2609,7 +2613,8 @@ if(baccableDashboardMenuVisible) {
 	uint8_t saveStatisticsOnFlash(){
 		//compare current stats with best stored times
 		uint8_t weShallWriteFlash=0;
-		uint16_t params[10];
+		/* @Shadin: Only two statistics are defined/read; leave unused Flash slots erased. */
+		uint16_t params[2];
 		if(chronometerElapsedTime_0_100_km_h<readStatisticsFromFlash(1)){
 			params[0]=(uint16_t)(chronometerElapsedTime_0_100_km_h *1000);
 			weShallWriteFlash=1;
@@ -2643,7 +2648,7 @@ if(baccableDashboardMenuVisible) {
 			//it seems that stm32F072 supports only writing 2byte words
 			//write parameter
  
-			for (uint8_t i = 0; i < 9; i++) {
+			for (uint8_t i = 0; i < sizeof params / sizeof params[0]; i++) {
 				if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, LAST_PAGE_ADDRESS_STATISTICS + (i * 4), params[i]) != HAL_OK) {
 					HAL_FLASH_Lock();
 					onboardLed_red_blink(9);
@@ -2661,47 +2666,48 @@ if(baccableDashboardMenuVisible) {
  
  
 	uint8_t saveShownParamsOnflash(){
-		//compare current stats with best stored times
-		uint8_t weShallWriteFlash=0;
-		uint16_t params[30];
-		weShallWriteFlash=1;
-		if(weShallWriteFlash){ //save shown params
-			HAL_FLASH_Unlock(); //unlock flash
- 
-			//erase flash
-			FLASH_EraseInitTypeDef eraseInitStruct;
-			uint32_t pageError=0;
-			eraseInitStruct.TypeErase= FLASH_TYPEERASE_PAGES;
-			eraseInitStruct.PageAddress=LAST_PAGE_ADDRESS_SHOWN_PARAMS;
-			eraseInitStruct.NbPages=1;
-			if(HAL_FLASHEx_Erase(&eraseInitStruct,&pageError)!=HAL_OK){ //error during erase
-				HAL_FLASH_Lock();
-				onboardLed_red_blink(8);
-				return 254; //error
-			}
- 
-			//let's prepare variables
-			compress_to_uint16(shownParamsArray, total_pages_in_params_setup_dashboard_menu, params);
- 
-			//it seems that stm32F072 supports only writing 2byte words
-			//write parameter
- 
-			for (uint8_t i = 0; i < 30; i++) {
-				if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, LAST_PAGE_ADDRESS_SHOWN_PARAMS + (i * 4), params[i]) != HAL_OK) {
-					HAL_FLASH_Lock();
-					onboardLed_red_blink(9);
-					return 255;
-				}
-			}
- 
-			//lock the flash
-			HAL_FLASH_Lock();
-			return 0;
- 
+		/* @Shadin: Keep the original halfword-per-4-bytes Flash layout.
+		 * Only active UDS menu bits are written (48/56 for 18-char, 51/54 for
+		 * 30-char display: 3 or 4 halfwords).
+		 * Zero-initialize the packed words; the unwritten tail remains erased. */
+		uint16_t params[(sizeof(shownParamsArray) + 15u) / 16u] = {0};
+		size_t bitsToSave = total_pages_in_params_setup_dashboard_menu;
+		if (bitsToSave > sizeof(shownParamsArray)) bitsToSave = sizeof(shownParamsArray);
+		const size_t wordsToSave = (bitsToSave + 15u) / 16u;
+		compress_to_uint16(shownParamsArray, bitsToSave, params);
+
+		if (HAL_FLASH_Unlock() != HAL_OK) {
+			onboardLed_red_blink(8);
+			return 254;
 		}
-		return 253;
+
+		//erase flash
+		FLASH_EraseInitTypeDef eraseInitStruct;
+		uint32_t pageError=0;
+		eraseInitStruct.TypeErase= FLASH_TYPEERASE_PAGES;
+		eraseInitStruct.PageAddress=LAST_PAGE_ADDRESS_SHOWN_PARAMS;
+		eraseInitStruct.NbPages=1;
+		if(HAL_FLASHEx_Erase(&eraseInitStruct,&pageError)!=HAL_OK){ //error during erase
+			HAL_FLASH_Lock();
+			onboardLed_red_blink(8);
+			return 254; //error
+		}
+
+		//it seems that stm32F072 supports only writing 2byte words
+		//write parameter
+		for (size_t i = 0; i < wordsToSave; i++) {
+			if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, LAST_PAGE_ADDRESS_SHOWN_PARAMS + (i * 4u), params[i]) != HAL_OK) {
+				HAL_FLASH_Lock();
+				onboardLed_red_blink(9);
+				return 255;
+			}
+		}
+
+		//lock the flash
+		HAL_FLASH_Lock();
+		return 0;
 	}
- 
+
 	void compress_to_uint16(const uint8_t *input, size_t input_len, uint16_t *output) {
 	    size_t out_index = 0;
 	    uint16_t acc = 0;
@@ -2738,14 +2744,16 @@ if(baccableDashboardMenuVisible) {
 	}
  
 	void readShownParamsFromFlash(){
-		//read from flash
-		uint16_t params[30];
-		for (uint8_t b = 0; b<30; b++) {
-			params[b]=*(volatile uint16_t*)(LAST_PAGE_ADDRESS_SHOWN_PARAMS+(b*4));
+		/* @Shadin: Only the first 240 stored bits are used; preserve the
+		 * original addresses and let erased tail words read as 0xFFFF. */
+		uint16_t params[(sizeof(shownParamsArray) + 15u) / 16u];
+		for (size_t b = 0; b < sizeof(params) / sizeof(params[0]); b++) {
+			params[b]=*(volatile uint16_t*)(LAST_PAGE_ADDRESS_SHOWN_PARAMS+(b*4u));
 		}
  
 		//decompress
-		decompress_from_uint16(params, 30, shownParamsArray, 240);
+		decompress_from_uint16(params, sizeof(params) / sizeof(params[0]),
+		                           shownParamsArray, sizeof(shownParamsArray));
  
 		}
  
@@ -3005,7 +3013,8 @@ if(baccableDashboardMenuVisible) {
 				}
 				break;
 			case 28: //QV_EXHAUST_FLAP_FUNCTION_ENABLED
-				if(tmpParam>1){
+				/* @Shadin: Gaucho's original Drive Style setting 2 is valid and persistent. */
+				if(tmpParam>2){
 					#if defined(QV_EXHAUST_FLAP_FUNCTION_ENABLED)
 						return 1;
 					#else
@@ -3024,21 +3033,42 @@ if(baccableDashboardMenuVisible) {
 				break;
 			case 30: //FRONT_PARK_MUTE (1=enabled 0=disabled)
 				if(tmpParam>1){
-					return 0; // flash non inizializzata: default disabilitato
+					/* @Shadin: Restore Gaucho's user_config.h default for unset Flash. */
+					#if defined(FRONT_PARK_MUTE)
+						return 1;
+					#else
+						return 0; // flash non inizializzata: default disabilitato
+					#endif
 				}
 				break;
 			case 31: //SNIFFER (1=enabled 0=disabled) //sniffer function 24/08/2026
 				if(tmpParam>1){
-					return 0; // flash non inizializzata: default disabilitato
+					#if defined(SNIFFER)
+						return 1;
+					#else
+						return 0; // flash non inizializzata: default disabilitato
+					#endif
 				}
 				break;
 			case 32: //ELM327 (1=enabled 0=disabled) //elm327 function 26/08/2026
 				if(tmpParam>1){
-					return 0; // flash non inizializzata: default disabilitato
+					#if defined(ELM327)
+						return 1;
+					#else
+						return 0; // flash non inizializzata: default disabilitato
+					#endif
 				}
 				break;
 			case 33: if(tmpParam>1) return 0; break;
-			case 34: if(tmpParam>2) return 0; break; // 0 legacy => ON, 1 ON, 2 OFF
+			case 34: // @Shadin: Reverse Mute uses standard Boolean 0/1; invalid values use user_config.h.
+				if(tmpParam>1){
+					#ifdef REVERSE_MUTE_ENABLED
+						return 1;
+					#else
+						return 0;
+					#endif
+				}
+				break;
 			default:
 				return 0;
 				break;
@@ -3062,25 +3092,27 @@ if(baccableDashboardMenuVisible) {
  
  
 	uint8_t getNextVisibleParam(uint8_t curIndex) {
- 
-	    uint8_t index = curIndex;
-	    while (index < total_pages_in_params_setup_dashboard_menu && !shownParamsArray[index]) index++;
- 
-	    if (index >= total_pages_in_params_setup_dashboard_menu) index = 0; //if all hidden, restart from the beginning
-	    while (index < curIndex && !shownParamsArray[index]) index++;
- 
-	    return index;
+	    /* @Shadin: Bounded circular search; do not index past the array if all pages are hidden. */
+	    uint8_t count = total_pages_in_params_setup_dashboard_menu;
+	    if (!count) return 0;
+	    curIndex = (uint8_t)(curIndex % count);
+	    for (uint8_t offset = 0; offset < count; offset++) {
+	        uint8_t index = (uint8_t)((curIndex + offset) % count);
+	        if (shownParamsArray[index]) return index;
+	    }
+	    return curIndex;
 	}
- 
+
 	uint8_t getPreviousVisibleParam(uint8_t curIndex) {
- 
-	    uint8_t index = curIndex;
-	    while (index >= 0 && !shownParamsArray[index]) index--;
- 
-	    if (index >= total_pages_in_params_setup_dashboard_menu) index = total_pages_in_params_setup_dashboard_menu-1; //if all hidden, restart from the end
-	    while (index > curIndex && !shownParamsArray[index]) index--;
- 
-	    return index;
+	    /* @Shadin: Reverse wrap without uint8_t underflow or out-of-range reads. */
+	    uint8_t count = total_pages_in_params_setup_dashboard_menu;
+	    if (!count) return 0;
+	    curIndex = (uint8_t)(curIndex % count);
+	    for (uint8_t offset = 0; offset < count; offset++) {
+	        uint8_t index = (uint8_t)((curIndex + count - offset) % count);
+	        if (shownParamsArray[index]) return index;
+	    }
+	    return curIndex;
 	}
  
 	// Event-driven max hold update for native CAN parameters.

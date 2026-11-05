@@ -64,16 +64,26 @@ The selections listed below document the functionality retained or excluded in o
 - Consolidated diagnostic, DNA Memory and supporting code into existing firmware modules where practical.
 - Completed all C1/C2/BH builds and the final in-car regression: **7 PASS, 2 SKIP, 0 FAIL** (Main/Features menu and Front Brake were not retested in that final run).
 
-### v3.9.2.5 — VERIFIED (current reference)
+### v3.9.2.5 — VERIFIED (archived reference)
 
 - User-confirmed vehicle operation of DTC Log with simplified numbering, persistence and protected clearing.
 - Reduced C1 SRAM footprint through optional LED compilation and Flash-resident immutable CAN templates.
 - Conditionally hide the LED Setup menu item when the LED feature is not compiled in.
 - C1 linker MAP: 3536 B free, an improvement of 3496 B over the earlier DTC Log build.
-- Current release details, validation, memory measurements and release-label changes: [DEVELOPMENT_SUMMARY.md](DEVELOPMENT_SUMMARY.md), section 10.
+- Historical release details, validation and C1 RAM measurements: [DEVELOPMENT_SUMMARY.md](DEVELOPMENT_SUMMARY.md), section 10. Consistency Maintenance NoLegacy and its 16/16 reported in-car PASS are documented in section 11.
+
+
+### v3.9.2.6 — VERIFIED (current reference)
+
+- Promoted the **Flash Consistency – No LED UI** source as the new development reference at the user's explicit request (2026-11-05). This is an acceptance decision, not a claim of new STM32CubeIDE builds or vehicle tests for this exact final source.
+- Preserved the v3.9.2.5 NoLegacy improvements (Flash parameter ordering, standard Reverse Mute 0/1, C1/C2/BH and 18/30 display compatibility, UDS bounds, and previously reported **16/16 PASS** in-car regression).
+- Removed redundant and uninitialized UDS shown-parameter Flash writes; existing Flash addresses and record format remain unchanged.
+- Retained the original Setup and Params Setup `Save&Exit` navigation without newly introduced red-LED error indication or a failed-save menu lock. The low-level Flash verification remains in place.
+- Clarified `getFreeRAM()` as a diagnostic stack-gap estimate, not the linker-MAP free SRAM value.
+- Updated the default firmware version to `v3.9.2.6` (no `-dev` suffix). Documentation remains consolidated in [DEVELOPMENT_SUMMARY.md](DEVELOPMENT_SUMMARY.md), especially section 12.
 
 ## Further technical details
 
 For an overview of the major functional changes and validation results, see [DEVELOPMENT_SUMMARY.md](DEVELOPMENT_SUMMARY.md).
 
-> **Note:** The inclusion/exclusion lists above describe **historical integration decisions after the Netzmark v3.7.4 merge**. They are not necessarily a description of the complete merge, the current v3.9.2.5 feature set, or Gaucho's present upstream implementation.
+> **Note:** The inclusion/exclusion lists above describe **historical integration decisions after the Netzmark v3.7.4 merge**. They are not necessarily a description of the complete merge, the current v3.9.2.6 feature set, or Gaucho's present upstream implementation.

@@ -14,13 +14,14 @@
 static uint8_t baccableFeaturesActive = 0;
 static uint8_t baccableMenuAllowed(uint8_t id) {
     switch(id) {
-        case 2: return function_read_faults_enabled != 0;
-        case 3: return function_clear_faults_enabled != 0;
-        case 5: return function_dyno_mode_master_enabled != 0;
-        case 7: return function_front_brake_forcer_master != 0;
-        case 8: return function_4wd_disabler_enabled != 0;
-        case 11: return HAS_function_enabled != 0;
-        case 12: return QV_exhaust_flap_function_enabled != 0;
+		/* @Shadin: Refer to the existing menu IDs instead of repeating numeric literals. */
+        case MENU_READ_FAULTS: return function_read_faults_enabled != 0;
+        case MENU_CLEAR_FAULTS: return function_clear_faults_enabled != 0;
+        case MENU_DYNO: return function_dyno_mode_master_enabled != 0;
+        case MENU_FRONT_BRAKE: return function_front_brake_forcer_master != 0;
+        case MENU_4WD: return function_4wd_disabler_enabled != 0;
+        case MENU_HAS: return HAS_function_enabled != 0;
+        case MENU_EXHAUST: return QV_exhaust_flap_function_enabled != 0;
         default: return 1;
     }
 }
@@ -87,7 +88,8 @@ void processingMessage0x000002FA(){
 	#if defined(C1baccable)
 	
 	  	//function ACC Virtual Pad
-		if(function_acc_virtual_pad_enabled==1){
+		/* @Shadin: 0x2FA ACC frame must fit the fixed 3-byte ACC_msg_data buffer. */
+		if(function_acc_virtual_pad_enabled==1 && rx_msg_header.DLC==sizeof ACC_msg_data){
 			switch (rx_msg_data[0]){
 				case 0x12: //CC on
 					newWheelPressedButtonID=0x12;
@@ -721,13 +723,19 @@ if(main_dashboardPageIndex==2 && faultsStateMachine==3 && faultsDTCcount>0){ //r
 												((uint16_t)snifferFunctionEnabled						!= readFromFlash(31))	|| //SNIFFER //sniffer function 24/08/2026
 												((uint16_t)elm327FunctionEnabled						!= readFromFlash(32))	 || //ELM327 //elm327 function 26/08/2026
 												((uint16_t)dnaMemoryFunctionEnabled != readFromFlash(33)) ||
-                                                ((uint16_t)(reverseMuteFunctionEnabled ? 1u : 2u) != readFromFlash(34)) ) {
+                                                ((uint16_t)reverseMuteFunctionEnabled != readFromFlash(34)) ) {
+													/* @Shadin: Preserve the original Save&Exit user experience.
+													 * Transactional Flash validation stays in config_store_save();
+													 * no hidden LED-only error state or menu lock on failure. */
+													const uint8_t snifferChanged = snifferFunctionEnabled != (uint8_t)readFromFlash(31);
+													const uint8_t elm327Changed = elm327FunctionEnabled != (uint8_t)readFromFlash(32);
+													(void)saveOnflash();
 													//sniffer function 24/08/2026 - BEGIN
 													//the only setting here with a real hardware side effect (usb re-enumeration), so unlike every
 													//other setting above it is deliberately applied here, at save&exit, rather than immediately on
 													//toggle: this way the usb bring up (and its host detection window) only ever starts
 													//once the user has actually committed to leaving this menu with the new value.
-													if(snifferFunctionEnabled!=(uint8_t)readFromFlash(31)){
+													if(snifferChanged){
 														if(snifferFunctionEnabled){
 															snifferStart();
 														}else{
@@ -743,7 +751,7 @@ if(main_dashboardPageIndex==2 && faultsStateMachine==3 && faultsDTCcount>0){ //r
 													//same reasoning as the sniffer above: applied here, at save&exit, not on toggle.
 													//Starting it only brings the usb port up and opens the detection window - the
 													//baccable keeps working normally until a host actually shows up.
-													if(elm327FunctionEnabled!=(uint8_t)readFromFlash(32)){
+													if(elm327Changed){
 														if(elm327FunctionEnabled){
 															elm327Start();
 														}else{
@@ -751,8 +759,7 @@ if(main_dashboardPageIndex==2 && faultsStateMachine==3 && faultsDTCcount>0){ //r
 														}
 													}
 													//elm327 function 26/08/2026 - END
-													//save it on flash
-													saveOnflash();
+													/* @Shadin: Saved above; no second Flash write. */
 											}
 											dashboard_menu_indent_level=0;
 											break;
@@ -947,7 +954,8 @@ if(main_dashboardPageIndex==2 && faultsStateMachine==3 && faultsDTCcount>0){ //r
 								case 10: //PARAMS SETUP MENU
 									switch(params_setup_dashboardPageIndex){
 										case 0: //{'S','A','V','E','&','E','X','I','T',},
-											saveShownParamsOnflash();
+											/* @Shadin: Keep the original Save&Exit behavior. */
+											(void)saveShownParamsOnflash();
 											dashboard_menu_indent_level=0;
 											resetDashboardTimers(); //@netzmark to speed-up clicks reaction XX
 											sendMainDashboardPageToSlaveBaccable(); //@netzmark to speed-up clicks reaction XX
@@ -1037,7 +1045,7 @@ if (baccableDashboardMenuVisible && dashboard_menu_indent_level==0 && main_dashb
 								lastPressedSpeedUpWheelButtonDuration=0; //unuseful here since it is done when button is released. just to be superstitious :-D.
 								immobilizerEnabled=!immobilizerEnabled;//toggle immobilizer status
 								floodTheBus=0; //ensure to reset this even if probably it is not needed
-								if(saveOnflash()>253){ //if we get error while permanently storeing the parameter on flash
+								if(saveOnflash()!=0u){ // @Shadin: Any nonzero save result is an error; revert immobilizer as before.
 									immobilizerEnabled=!immobilizerEnabled;//toggle immobilizer status to the original status and avoid to report the user anything
 									onboardLed_red_on(); //a problem occurred
 								}else{
