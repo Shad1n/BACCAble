@@ -976,14 +976,6 @@ uint8_t config_store_save(const uint16_t *values, uint8_t count) {
 		}
  
  
-		if(shutdownDashboardMenuRequestTime>0){
-			if(currentTime-shutdownDashboardMenuRequestTime>39000){
-				baccableDashboardMenuVisible=0; //stop sending params request when motor is off
-				clearDashboardBaccableMenu(); //ripulisci la stringa
-				baccabledashboardMenuWasVisible=1; //allows the menu to automatically turn on when motor rotates
-				shutdownDashboardMenuRequestTime=0; //avoid to return here
-			}
-		}
 		//send a parameter request each xx msec if dashboard menu shall be visible
 		//baccableDashboardMenuVisible=1; //force menu always on, just for debug
 		/* ori Gaucho code end
@@ -1058,7 +1050,15 @@ uint8_t config_store_save(const uint16_t *values, uint8_t count) {
 		*/
  
 /* @netzmark: to create multi parameters screens */
-if(baccableDashboardMenuVisible) {
+/* @Shadin: Keep dashboard/UDS traffic active across Start/Stop auto-stops,
+ * but never keep the vehicle network awake after ignition OFF or loss of
+ * fresh ignition CAN status. The existing Stage G observers are RX-only.
+ * The menu visibility preference is retained for the next RUN cycle. */
+if (baccableDashboardMenuVisible &&
+    stageg_ign_seen_384 && stageg_ign_seen_1ef &&
+    stageg_ign_live_ign == 4u && stageg_ign_live_rfhub == 0x08u &&
+    (uint32_t)(currentTime - stageg_ign_last_384_ms) <= 1500u &&
+    (uint32_t)(currentTime - stageg_ign_last_1ef_ms) <= 1500u) {
     switch(dashboard_menu_indent_level) {
         case 0: // Main Menu
             if (currentTime - last_sent_uds_parameter_request_Time >= 500) {

@@ -124,7 +124,6 @@
 		extern uint8_t printStopTheCar; //if =2 prints a message to screen for one second
 		extern uint8_t printEnableDyno; //print the message "ENABLE DYNO" on the dashboard
 
-		extern uint32_t shutdownDashboardMenuRequestTime; //used to shutdown display after one minute from motor off event
 		extern uint8_t checkbox_symbols[2]; // O (0x4F= not selected), Ø (0xD8= selected)
 		//ACC_VIRTUAL_PAD
 		extern uint8_t function_acc_virtual_pad_enabled; //default disabled. saved in flash
@@ -156,7 +155,7 @@
 		extern uint8_t function_smart_disable_start_stop_enabled; //added to manage the function from the setup menu on the dashboard
 		extern CAN_TxHeaderTypeDef disableStartAndStopMsgHeader;
 		extern uint8_t disableStartAndStopMsgData[8]; //byte 5 shall be set to 0x08
-		extern uint8_t startAndStopEnabled; //this is the status of my internal logic. If=0 the function goes to sleep up to next reboot
+		extern uint8_t startAndStopEnabled; // @Shadin: one-shot latch; 0 = inactive until next confirmed ignition cycle
 		extern uint8_t startAndstopCarStatus; //this is the status of Start&stop received by the car. 1=enabled in car (this is the default status in giulias).
 		extern uint32_t lastTimeStartAndstopDisablerButtonPressed;
 		extern uint8_t requestToDisableStartAndStop; //if set to 1 sends message simulating s&s button press
@@ -212,7 +211,6 @@
 
 		extern CAN_TxHeaderTypeDef uds_parameter_request_msg_header;
 		extern uint8_t baccableDashboardMenuVisible;
-		extern uint8_t baccabledashboardMenuWasVisible; //tells us if menu was previously disabled (and then when motor will turn we want to show it again
 		extern uint8_t oilPressure; //oil pressure without scaling (this value shall be multiplied by xx to obtain value in bar).
 		extern uint8_t oilLevel; //oil level from 0 to 14
 		extern uint8_t oilTemperature; //oil temperature in celsious degrees (to correct by offset)

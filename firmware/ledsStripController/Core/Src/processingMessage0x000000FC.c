@@ -49,7 +49,8 @@ void processingMessage0x000000FC(){
             stageg_ign_diag_note_stopstart(ss);
         }
 		if(currentRpmSpeed<400){
-			startAndStopEnabled=1; //if motor off, re-enable start&stop logic
+			/* @Shadin: A Start/Stop auto-stop also drops RPM below 400.
+			 * Keep the one-shot disable latch; only confirmed ignition return rearms it. */
 			requestToDisableStartAndStop=0; //re set request trigger
 
 			if(_4wd_disabled>0){
@@ -61,18 +62,10 @@ void processingMessage0x000000FC(){
 				commandsMenuEnabled=1;//enable menu commands
 			}
 
-			if(baccableDashboardMenuVisible==1){
-				if(shutdownDashboardMenuRequestTime==0) shutdownDashboardMenuRequestTime=currentTime; //save time. we will shut it off after one minute
-			}
-
+			/* @Shadin: A Start/Stop auto-stop must not clear the BACCAble
+			 * dashboard text. Ignition OFF already hides the HU display. */
 			engineOnSinceMoreThan5seconds=0; //engine is off
 		}else{
-			shutdownDashboardMenuRequestTime=0;
-			if(baccabledashboardMenuWasVisible==1){
-				baccableDashboardMenuVisible=1; //show menu
-				baccabledashboardMenuWasVisible=0; //avoid to return here
-			}
-
 			if(engineOnSinceMoreThan5seconds<500) engineOnSinceMoreThan5seconds++; //engine is rotating. increase it (this message arrives each 10msec, so if >500, 5 seconds has elapsed)
 		}
 	#endif

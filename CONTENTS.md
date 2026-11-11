@@ -73,7 +73,7 @@ The selections listed below document the functionality retained or excluded in o
 - Historical release details, validation and C1 RAM measurements: [DEVELOPMENT_SUMMARY.md](DEVELOPMENT_SUMMARY.md), section 10. Consistency Maintenance NoLegacy and its 16/16 reported in-car PASS are documented in section 11.
 
 
-### v3.9.2.6 — VERIFIED (current reference)
+### v3.9.2.6 — VERIFIED (archived rollback reference)
 
 - Promoted the **Flash Consistency – No LED UI** source as the new development reference at the user's explicit request (2026-11-05). This is an acceptance decision, not a claim of new STM32CubeIDE builds or vehicle tests for this exact final source.
 - Preserved the v3.9.2.5 NoLegacy improvements (Flash parameter ordering, standard Reverse Mute 0/1, C1/C2/BH and 18/30 display compatibility, UDS bounds, and previously reported **16/16 PASS** in-car regression).
@@ -82,8 +82,26 @@ The selections listed below document the functionality retained or excluded in o
 - Clarified `getFreeRAM()` as a diagnostic stack-gap estimate, not the linker-MAP free SRAM value.
 - Updated the default firmware version to `v3.9.2.6` (no `-dev` suffix). Documentation remains consolidated in [DEVELOPMENT_SUMMARY.md](DEVELOPMENT_SUMMARY.md), especially section 12.
 
+The next Smart Start/Stop / DisplayPersistent PREBUILD initially exposed a vehicle sleep regression; that **unguarded** variant is rejected. The corrected ignition-guarded solution is included in v3.9.2.7 (see below).
+
+### v3.9.2.7 — VERIFIED (current reference, 2026-11-11)
+
+- Based on the in-car validated **Smart Start/Stop + Display Ignition Guard** source. The user confirmed normal vehicle sleep with BACCAble connected, BACCAble switched-USB power-off, persistent Audio Text during a Start/Stop engine autostop, normal display shutdown on ignition OFF, and once-per-real-ignition-cycle Start/Stop automatic disable.
+- Retained the original Gaucho one-shot Start/Stop and Stage G ignition-return infrastructure. Removed the legacy 39-second RPM-triggered text hide, but stopped periodic C1→BH dashboard / UDS requests when ignition/RFHUB RUN CAN states are OFF or stale, preventing the earlier vehicle sleep regression.
+- Kept `DISABLE_LOW_CONSUME` unchanged for the USB-5V-powered Canable cards. No new firmware modules or storage layouts. No `-dev` suffix.
+- Functional changes were user-tested in the vehicle on 2026-11-11; there is **no separately reported full STM32CubeIDE build or in-car flash test** of this version-string-only v3.9.2.7 release archive. Full release and validation scope are recorded in [DEVELOPMENT_SUMMARY.md](DEVELOPMENT_SUMMARY.md), sections 13–16.
+
+## Files included in this archive
+
+- `firmware/ledsStripController/` — complete C1/C2/BH STM32CubeIDE source, project configurations, Gaucho's original `LICENSE.md` and `MAKEFILE.md`, and the user's `user_config.h`.
+- `README.md` — original Gaucho project README, retained intact.
+- `CONTENTS.md` — concise integration / version history and file inventory.
+- `DEVELOPMENT_SUMMARY.md` — consolidated technical notes, historical intermediate DTC/RAM work, release records and actual test status. No separate PREBUILD-note or version-specific Markdown files remain.
+
 ## Further technical details
 
-For an overview of the major functional changes and validation results, see [DEVELOPMENT_SUMMARY.md](DEVELOPMENT_SUMMARY.md).
+For the technical changes and validation records, see [DEVELOPMENT_SUMMARY.md](DEVELOPMENT_SUMMARY.md).
 
-> **Note:** The inclusion/exclusion lists above describe **historical integration decisions after the Netzmark v3.7.4 merge**. They are not necessarily a description of the complete merge, the current v3.9.2.6 feature set, or Gaucho's present upstream implementation.
+> **Note:** The inclusion/exclusion lists above describe **historical integration decisions after the Netzmark v3.7.4 merge**. They are not necessarily a description of the complete merge, the current v3.9.2.7 feature set, or Gaucho's present upstream implementation.
+
+**Current reference:** v3.9.2.7 VERIFIED. Historical v3.9.2.6 remains the rollback reference; the unguarded DisplayPersistent PREBUILD is not a release.

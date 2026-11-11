@@ -147,7 +147,6 @@ const char *FW_VERSION=_FW_VERSION;
 	uint8_t printStopTheCar=0; //if =2 prints a message to screen for one second
 	uint8_t printEnableDyno=0; //print the message "ENABLE DYNO" on the dashboard
 
-	uint32_t shutdownDashboardMenuRequestTime=0; //used to shutdown display after one minute from motor off event
 
 	uint8_t checkbox_symbols[2] = {0x4F, 0xD8}; // O (0x4F= not selected), Ø (0xD8= selected)
 
@@ -194,7 +193,7 @@ const char *FW_VERSION=_FW_VERSION;
 	uint8_t function_smart_disable_start_stop_enabled=1; //added to manage the function from the setup menu on the dashboard
 	CAN_TxHeaderTypeDef disableStartAndStopMsgHeader={.IDE=CAN_ID_STD, .RTR = CAN_RTR_DATA, .StdId=0x4B1, .DLC=8};
 	uint8_t disableStartAndStopMsgData[8]= {0x04, 0x00, 0x00, 0x10, 0xA0, 0x08, 0x08, 0x00}; //byte 5 shall be set to 0x08
-	uint8_t startAndStopEnabled=1; //this is the status of my internal logic. If=0 the function goes to sleep up to next reboot
+	uint8_t startAndStopEnabled=1; // @Shadin: one-shot latch; 0 = inactive until next confirmed ignition cycle
 	uint8_t startAndstopCarStatus=1; //this is the status of Start&stop received by the car. 1=enabled in car (this is the default status in giulias).
 	uint32_t lastTimeStartAndstopDisablerButtonPressed=0;
 	uint8_t requestToDisableStartAndStop=0; //if set to 1 sends message simulating s&s button press
@@ -270,7 +269,6 @@ const char *FW_VERSION=_FW_VERSION;
 
 	CAN_TxHeaderTypeDef uds_parameter_request_msg_header={.IDE=CAN_ID_EXT, .RTR = CAN_RTR_DATA, .ExtId=0x18DA10F1, .DLC=3};
 	uint8_t baccableDashboardMenuVisible=0;
-	uint8_t baccabledashboardMenuWasVisible=0; //tells us if menu was previously disabled (and then when motor will turn we want to show it again
 	uint8_t oilPressure; 		//oil pressure without scaling (this value shall be multiplied by xx to obtain value in bar).
 	uint8_t oilLevel;			//oil level from 0 to 14.
 	uint8_t oilTemperature; 	//oil temperature in celsious degrees (to correct by offset)

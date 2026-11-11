@@ -66,6 +66,9 @@ void stageg_ign_diag_check_timeouts(uint32_t now) {
                    currentRpmSpeed > 0u) {
             stageg_ign_await_run_confirmation = 0u;
             stageg_ign_count(&stageg_ign_confirmed_cycle_count);
+            /* @Shadin: Rearm Gaucho's one-shot Start/Stop disable only after
+             * a confirmed OFF -> RUN ignition cycle, never after auto-stop. */
+            startAndStopEnabled = 1u;
             stageg_ign_snapshot(12u);
             /* The event only queues a flag; dna_stageg_tick() owns guard mutation and restore. */
             dna_stageg_note_ignition_return();
