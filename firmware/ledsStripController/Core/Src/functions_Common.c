@@ -373,24 +373,52 @@ static void usb_storage_sync_text(const char *name, const char *expected) {
 }
 #endif
 
+/* @Shadin: Restore Gaucho's first-boot FAT initialization for virgin C2/BH.
+ * Only format an entirely erased USB file area after FR_NO_FILESYSTEM.
+ * Never format a damaged/nonempty volume, and never touch reserved Flash pages. */
+#ifdef ENABLE_USB_MASS_STORAGE
+static uint8_t usb_storage_is_factory_blank(void) {
+    /* USB volume starts at 0x08010000; last 6 KiB are reserved for
+     * persistent C2/BH data and must not be part of this check or erased. */
+    const uint32_t *word = (const uint32_t *)USB_FLASH_START_ADDRESS;
+    const uint32_t words = (0x0801E800u - USB_FLASH_START_ADDRESS) / sizeof(uint32_t);
+    for (uint32_t i = 0u; i < words; ++i) {
+        if (word[i] != 0xFFFFFFFFu) return 0u;
+    }
+    return 1u;
+}
+#endif
+
 void storage_init(void){
 #ifdef ENABLE_USB_MASS_STORAGE
-    /* Preserve the existing volume and its C2/BH label. Never auto-format. */
-    if (f_mount(&fs, "", 1) == FR_OK) {
+    FRESULT result = f_mount(&fs, "", 1);
+    if (result == FR_NO_FILESYSTEM && usb_storage_is_factory_blank()) {
+        /* @Shadin: Gaucho's original FAT12/SFD geometry, but only on a
+         * genuinely blank volume. A mount error alone must never erase logs. */
+        BYTE work[FF_MIN_SS];
+        MKFS_PARM opt = { .fmt = FM_FAT | FM_SFD, .n_fat = 1,
+                          .align = 0, .n_root = 32, .au_size = FF_MIN_SS };
+        result = f_mkfs("", &opt, work, sizeof(work));
+        if (result == FR_OK) {
+            result = f_mount(&fs, "", 1);
+            if (result == FR_OK) {
+#if defined(C2baccable)
+                (void)f_setlabel("BACCABLE C2");
+#elif defined(BHbaccable)
+                (void)f_setlabel("BACCABLE BH");
+#endif
+            }
+        }
+    }
+    if (result == FR_OK) {
         usb_storage_sync_text("VERSION.TXT", _FW_VERSION);
-        /* @Shadin: Retire the test file non-destructively; preserve VERSION.TXT. */
+        /* @Shadin: Remove obsolete files only from a valid mounted volume. */
         (void)f_unlink("HELLO.TXT");
-        /* One-time migration: remove obsolete file from the local C2/BH FAT volume.
-         * FR_NO_FILE is normal on subsequent boots. No format or retry loop.
-         * disk_write protects reserved Flash pages; deletion failure is nonfatal. */
         (void)f_unlink("BACCABLE.TXT");
     }
-    f_unmount("");
+    (void)f_unmount("");
 #endif
-}
-
-
-/* @Shadin: Manual DTC event journal, using Gaucho's existing FatFs and UART.
+}/* @Shadin: Manual DTC event journal, using Gaucho's existing FatFs and UART.
  * Only BH stores events. USB Mass Storage remains read-only to the host.
  * The UART ISR copies complete frames into a one-frame inbox; all file I/O
  * runs in the main loop. No new implementation modules or Flash layout. */
