@@ -57,7 +57,7 @@ Menu ordering, HU text restoration, early DNA Memory, diagnostic menu refinement
 
 Integrated Gaucho v3.9.2 parameter-display correction and simplified menu indexing.
 
-### v3.9.2.4 – Stage 18
+### v3.9.2.4
 
 Consolidated ECM/BCM/ABS diagnostics, DNA Memory, Flash configuration persistence and 18/30 display support into the existing source structure.
 
