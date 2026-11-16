@@ -227,13 +227,13 @@ DRESULT disk_ioctl(
     case CTRL_SYNC:
         return RES_OK;
     case GET_SECTOR_COUNT:
-        *((WORD*)buff) = (TOTAL_USB_DEVICE_SIZE / FF_MIN_SS);
+        *(LBA_t*)buff = (LBA_t)(TOTAL_USB_DEVICE_SIZE / FF_MIN_SS); /* @Shadin: FatFs expects full-width sector count for f_mkfs(). */
         return RES_OK;
     case GET_SECTOR_SIZE:
         *((WORD*)buff) = FF_MIN_SS;
         return RES_OK;
     case GET_BLOCK_SIZE:
-        *((WORD*)buff) = (PAGE_SIZE / FF_MIN_SS);
+        *(DWORD*)buff = (DWORD)(PAGE_SIZE / FF_MIN_SS); /* @Shadin: FatFs passes DWORD for block size. */
         return RES_OK;
     default:
         return RES_PARERR;
