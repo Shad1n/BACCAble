@@ -56,9 +56,9 @@ void processingMessage0x000000FC(){
 			if(_4wd_disabled>0){
 				//disable 4dw function
 				_4wd_disabled=0; //disable 4dw function
-				dashboard_main_menu_array[main_dashboardPageIndex][4]=' '; //enabled
-				dashboard_main_menu_array[main_dashboardPageIndex][5]='E';
-				dashboard_main_menu_array[main_dashboardPageIndex][6]='n';
+				dashboard_main_menu_array[8][4]=' '; //enabled
+				dashboard_main_menu_array[8][5]='E';
+				dashboard_main_menu_array[8][6]='n';
 				commandsMenuEnabled=1;//enable menu commands
 			}
 

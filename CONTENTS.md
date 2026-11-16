@@ -1,6 +1,7 @@
 # BACCAble – Contents and Development History
 
-**Current reference:** v3.9.2.8 VERIFIED  
+**Current release candidate:** v3.9.3.0 PREBUILD
+**Previous verified reference:** v3.9.2.8 VERIFIED
 **Upstream:** [Gaucho BACCAble](https://github.com/gaucho1978/BACCAble) and [Netzmark BACCAble](https://github.com/netzmark/BACCAble)  
 **Custom modifications:** `@Shadin`
 
@@ -73,9 +74,13 @@ Reduced redundant Params Setup Flash writes, clarified `getFreeRAM()` reporting 
 
 Added once-per-ignition Smart Start/Stop and ignition-guarded dashboard/UDS updates. Removed the 39-second text clearing while preserving normal vehicle sleep.
 
-### v3.9.2.8 – current VERIFIED reference
+### v3.9.2.8
 
 Restored Gaucho's first-boot FAT12 initialization for erased C2/BH USB storage, with protection for existing data and reserved Flash regions.
+
+### v3.9.3.0 – 4WD menu label fix
+
+Applied Gaucho commit `3629e6a` menu-label correction: when engine RPM falls below 400 and 4WD Disable resets, the ` En` label is restored on the fixed 4WD menu entry (index 8), rather than overwriting the currently selected menu entry. No change to 4WD control behavior. This is a source-level maintenance change, not yet rebuilt or vehicle-tested in this release.
 
 ## Files in this archive
 
