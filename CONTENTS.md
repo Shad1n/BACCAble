@@ -1,7 +1,7 @@
 # BACCAble – Contents and Development History
 
-**Current release candidate:** v3.9.3.0 PREBUILD
-**Previous verified reference:** v3.9.2.8 VERIFIED
+**Current verified release:** v3.9.3.1 VERIFIED
+**Previous verified reference:** v3.9.2.8 VERIFIED (rollback)
 **Upstream:** [Gaucho BACCAble](https://github.com/gaucho1978/BACCAble) and [Netzmark BACCAble](https://github.com/netzmark/BACCAble)  
 **Custom modifications:** `@Shadin`
 
@@ -30,7 +30,7 @@ The following are historical decisions, not a complete inventory of either upstr
 - **Read faults** and **Clear faults** support ECM, BCM and ABS, including multiple DTCs and status information.
 - Manual Read/Clear actions are written to `DTC_LOG.TXT` using `1.`, `2.`, ... event numbering, with a blank line between entries and no timestamps or `END` markers.
 - **Clear DTC logs** requires long OK; `VERSION.TXT` is retained.
-- On C2/BH, a new or completely erased USB Flash area is initialized with FAT12 on first boot. Existing valid volumes are preserved; nonempty or unreadable areas are not automatically formatted. C1 does not use USB mass storage.
+- On C2/BH, a missing or invalid FAT12 volume is initialized at startup using Gaucho-style mount-or-format logic. Existing valid volumes are preserved; reformatting an invalid volume may erase `DTC_LOG.TXT`. C1 does not use USB mass storage.
 
 ### Settings and vehicle features
 
@@ -74,13 +74,17 @@ Reduced redundant Params Setup Flash writes, clarified `getFreeRAM()` reporting 
 
 Added once-per-ignition Smart Start/Stop and ignition-guarded dashboard/UDS updates. Removed the 39-second text clearing while preserving normal vehicle sleep.
 
-### v3.9.2.8
+### v3.9.2.8 (with fault, no longer applied. Corrected in v3.9.3.1)
 
 Restored Gaucho's first-boot FAT12 initialization for erased C2/BH USB storage, with protection for existing data and reserved Flash regions.
 
 ### v3.9.3.0 – 4WD menu label fix
 
-Applied Gaucho commit `3629e6a` menu-label correction: when engine RPM falls below 400 and 4WD Disable resets, the ` En` label is restored on the fixed 4WD menu entry (index 8), rather than overwriting the currently selected menu entry. No change to 4WD control behavior. This is a source-level maintenance change, not yet rebuilt or vehicle-tested in this release.
+Applied Gaucho commit `3629e6a` menu-label correction: when engine RPM falls below 400 and 4WD Disable resets, the ` En` label is restored on the fixed 4WD menu entry (index 8), rather than overwriting the currently selected menu entry. No change to 4WD control behavior. The fix is retained in v3.9.3.1.
+
+### v3.9.3.1 – Gaucho Simple FAT (VERIFIED)
+
+Restored Gaucho-style FAT mount-or-format handling on C2/BH without the extra blank-Flash scan. Corrected FatFs `GET_SECTOR_COUNT` and `GET_BLOCK_SIZE` output types; `VERSION.TXT` is created or updated before legacy-file cleanup. Existing valid FAT volumes are reused. The last 6 KiB of Flash remains protected, so the advertised USB volume capacity must not be treated as fully writable. The user confirmed successful C1/C2/BH builds and flashing, and FAT plus `VERSION.TXT` creation on erased C2 and BH boards. DTC logging was not separately vehicle-tested with this release.
 
 ## Files in this archive
 
