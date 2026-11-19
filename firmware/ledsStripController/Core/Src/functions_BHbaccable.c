@@ -9,9 +9,9 @@
 
 #if defined(BHbaccable)
 
-	// Stage D4: conservative, reversible display pacing experiment.
+	// @Shadin: Netzmark faster dashboard pacing; preserve the existing frame sequence.
 	// Retain atomic page snapshots and the existing frame sequence.
-	#define BH_DASHBOARD_FRAME_INTERVAL_MS 40u
+	#define BH_DASHBOARD_FRAME_INTERVAL_MS 15u
 
 	// Stable source for a complete multi-frame dashboard transmission.
 	static uint8_t dashboardTxSnapshot[DASHBOARD_MESSAGE_MAX_LENGTH];

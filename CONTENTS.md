@@ -1,7 +1,7 @@
 # BACCAble – Contents and Development History
 
-**Current verified release:** v3.9.3.1 VERIFIED
-**Previous verified reference:** v3.9.2.8 VERIFIED (rollback)
+**Current verified release:** v3.9.3.2 VERIFIED
+**Previous verified reference:** v3.9.3.1 VERIFIED (rollback)
 **Upstream:** [Gaucho BACCAble](https://github.com/gaucho1978/BACCAble) and [Netzmark BACCAble](https://github.com/netzmark/BACCAble)  
 **Custom modifications:** `@Shadin`
 
@@ -86,6 +86,10 @@ Applied Gaucho commit `3629e6a` menu-label correction: when engine RPM falls bel
 
 Restored Gaucho-style FAT mount-or-format handling on C2/BH without the extra blank-Flash scan. Corrected FatFs `GET_SECTOR_COUNT` and `GET_BLOCK_SIZE` output types; `VERSION.TXT` is created or updated before legacy-file cleanup. Existing valid FAT volumes are reused. The last 6 KiB of Flash remains protected, so the advertised USB volume capacity must not be treated as fully writable. The user confirmed successful C1/C2/BH builds and flashing, and FAT plus `VERSION.TXT` creation on erased C2 and BH boards. DTC logging was not separately vehicle-tested with this release.
 
+### v3.9.3.2 – Netzmark menu speed (VERIFIED)
+
+Integrated Netzmark's faster menu timing: C1 serial reply timing 250 to 150 ms (linked C2/BH timing 200 to 100 ms) and BH dashboard frame interval 40 to 15 ms. The existing frame order and ignition-guarded display behavior are retained. User-reported C1/C2/BH builds and vehicle checks passed for menu response, text replacement, long UDS names, Setup / Params Setup, communication stability and vehicle sleep.
+
 ## Files in this archive
 
 - `firmware/ledsStripController/` – STM32CubeIDE project, C1/C2/BH configurations, source files and personal `user_config.h`.
@@ -101,3 +105,4 @@ Restored Gaucho-style FAT mount-or-format handling on C2/BH without the extra bl
 - Do not reopen closed topics without a new requirement.
 - Keep firmware version strings free of `-dev`; track verification separately.
 - Record future release changes in this file rather than creating additional version-specific Markdown documents.
+
