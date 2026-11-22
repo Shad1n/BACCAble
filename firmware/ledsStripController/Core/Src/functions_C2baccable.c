@@ -48,8 +48,7 @@ int abs_sender_get(const AbsSender *s,uint8_t request_id,uint8_t index,uint8_t r
 	/* @Shadin: Legacy two-DTC UART sender was replaced by the transaction-ID
 	 * protocol. C1 receives queued frames via abs_c1_inbox and polls via
 	 * abs_c1_service; C2 serves Start/Get using abs_sender.
-	 * This comment documents wiring only; build and vehicle validation remain
-	 * required for this refactored package. */
+	 * This comment documents wiring only */
 
 	static AbsSender absC2Sender;
 	static uint8_t absC2FailureReason = 'E';

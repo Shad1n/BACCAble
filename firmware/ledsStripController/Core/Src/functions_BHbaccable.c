@@ -260,7 +260,7 @@
 		huRestoreProcess();
 		dnaRestoreProcess();
 		if(requestToSendOneFrame>0){ //if requested by a message received from master baccable
-			// Send one display frame at a time; Stage D4 tests a 40 ms interval.
+			// Send one display frame at a time 15 ms interval.
 			if (currentTime-lastSentTelematic_display_info_msg_Time>BH_DASHBOARD_FRAME_INTERVAL_MS){
 				lastSentTelematic_display_info_msg_Time=currentTime;
 				// Capture only at the first frame; never mix two menu pages.
