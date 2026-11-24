@@ -9,7 +9,7 @@
 #include "functions_C1baccable.h"
 #include "stageg_ign_diag.h"
 
-/* Passive snapshots, 8-event ring. No CAN TX or flash writes. */
+/* @Shadin: Passive snapshots, 8-event ring. No CAN TX or flash writes. */
 #if defined(C1baccable)
 volatile stageg_ign_event_t stageg_ign_events[8];
 volatile uint32_t stageg_ign_event_count;

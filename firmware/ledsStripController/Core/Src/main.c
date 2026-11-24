@@ -174,7 +174,7 @@ int main(void){
 			//can_tx(&testMsgHeader, testMsgData);
 		#endif
 
-		// Stage G v3.9.2: service one pending C1 CAN frame before the periodic
+		// @Shadin: Stage G v3.9.2: service one pending C1 CAN frame before the periodic
 		// tasks. This bounds button-event queueing behind background work while
 		// preserving the original late-loop CAN handler for all targets.
 		// ELM327/elmlink owns the RX FIFO when active; never consume its replies.

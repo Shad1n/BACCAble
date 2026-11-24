@@ -9,11 +9,11 @@
 
 #if defined(BHbaccable)
 
-	// @Shadin: Netzmark faster dashboard pacing; preserve the existing frame sequence.
-	// Retain atomic page snapshots and the existing frame sequence.
+	// @netzmark: faster dashboard pacing.
+	// @Shadin: Retain atomic page snapshots and the existing frame sequence.
 	#define BH_DASHBOARD_FRAME_INTERVAL_MS 15u
 
-	// Stable source for a complete multi-frame dashboard transmission.
+	// @Shadin: Stable source for a complete multi-frame dashboard transmission.
 	static uint8_t dashboardTxSnapshot[DASHBOARD_MESSAGE_MAX_LENGTH];
 
 	void BHbaccableInitCheck(){
@@ -91,7 +91,7 @@
 	static void dnaRestoreStop(uint8_t reason){
 		dnaRestoreState=0;
 	}
-	/* Remember manual selector activity after this engine-start edge. This closes
+	/* @Shadin: Remember manual selector activity after this engine-start edge. This closes
 	 * the race where the driver changes DNA after C1's evaluation but before the
 	 * UART request reaches BH. A manual choice blocks the whole ignition-cycle
 	 * restore. A press made while stopped is retained through the next engine start. */
@@ -109,7 +109,7 @@
 
 	//called on every 0x256 received (main loop): sends the presses right after the frame of the selector
 	void dnaRestoreOn256(void){
-		dnaRestoreTrackEngine();
+		dnaRestoreTrackEngine(); /* @Shadin: track and forward manual selector activity. */
 		if(!(rx_msg_data[0] & 0x60u)) dnaRestoreManualPressActive=0u;
 		else if(!dnaRestoreManualPressActive){
 			dnaRestoreManualPressActive=1u;
@@ -169,7 +169,7 @@
 			   currentTime-dnaRestoreLast46CTime>DNA_RESTORE_INPUT_MAX_AGE_MS || currentTime-dnaRestoreLast256Time>DNA_RESTORE_INPUT_MAX_AGE_MS){
 				dnaRestoreStop(1); //selector not on this bus, style unknown or engine off: nothing is sent
 			}else if(dnaRestoreManualInputAfterStart){
-				dnaRestoreStop(3); //a manual selector press after engine start has priority for this ignition cycle
+				dnaRestoreStop(3); // @Shadin: a manual selector press after engine start has priority for this ignition cycle
 			}else if(dnaRestorePlan()){ //works out direction, number of short presses and the final long press (D->R)
 				dnaRestoreState=1; //from now on dnaRestoreOn256() sends the presses
 			}else{
@@ -199,7 +199,7 @@
 	}
 	//DNA memory 18/10/2026 - END
 
-	// HU text refresh on long-OK exit. Skip when HU is already muted to avoid audible unmute.
+	// @Shadin: HU text refresh on long-OK exit. Skip when HU is already muted to avoid audible unmute.
 	// 0=idle, 1=wait for first toggle feedback, 2=wait for restored state,
 	// 3=wait for display clear. Never retry a toggle without fresh feedback.
 	static uint8_t huRestorePhase = 0;
@@ -263,7 +263,7 @@
 			// Send one display frame at a time; Stage D4 tests a 40 ms interval.
 			if (currentTime-lastSentTelematic_display_info_msg_Time>BH_DASHBOARD_FRAME_INTERVAL_MS){
 				lastSentTelematic_display_info_msg_Time=currentTime;
-				// Capture only at the first frame; never mix two menu pages.
+				// @Shadin: Capture only at the first frame; never mix two menu pages.
 				if (paramsStringCharIndex == 0) {
 					memcpy(dashboardTxSnapshot, dashboardPageStringArray, DASHBOARD_MESSAGE_MAX_LENGTH);
 				}
@@ -439,7 +439,7 @@
 
 		// --- REVERSE AUDIO MUTE SYSTEM ---
 		if(!reverseAutoMuteEnabled && audioSystemReverseMuted != 0){
-            // Release only a mute introduced by BACCAble; never toggle a manual mute.
+            // @Shadin: Release only a mute introduced by BACCAble; never toggle a manual mute.
             if(audioSystemReverseMuted == 1 && audioSystemMuted == 1){
                 memcpy(centerConsoleTxMsgData, (uint8_t*)centerConsoleRxMsgData, 6);
                 centerConsoleTxMsgData[2] = 0xE0;

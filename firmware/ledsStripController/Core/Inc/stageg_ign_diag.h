@@ -1,3 +1,4 @@
+/* @Shadin: Stage G passive ignition diagnostics interface. */
 #ifndef STAGEG_IGN_DIAG_H
 #define STAGEG_IGN_DIAG_H
 #include <stdint.h>

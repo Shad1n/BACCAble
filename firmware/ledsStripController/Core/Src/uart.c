@@ -506,7 +506,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 							}else{
 								// Keep only the current transmission and one latest-page refresh.
                                 // A new page must not queue multiple obsolete full display cycles.
-                                // The BH snapshot is refreshed at the next frame-zero boundary.
+                                // @Shadin: The BH snapshot is refreshed at the next frame-zero boundary.
                                 if (requestToSendOneFrame == 0) requestToSendOneFrame = 1;
                                 else if (requestToSendOneFrame == 1) requestToSendOneFrame = 2;
 							}
@@ -831,7 +831,7 @@ uint8_t getOtherProcessorsSleepingStatus(){
 */
 
 
-/* Stage C2: checked, interrupt-state-preserving enqueue for ABS commands.
+/* @Shadin: Stage C2: checked, interrupt-state-preserving enqueue for ABS commands.
  * Do not clear the shared queue: it also carries unrelated functions. */
 int uart_try_enqueue_abs(const uint8_t *data, size_t length) {
 #if defined(C1baccable)
@@ -854,7 +854,7 @@ int uart_try_enqueue_abs(const uint8_t *data, size_t length) {
 #endif
 }
 
-/* Atomic admission check for the Stage G restore request.
+/* @Shadin: Atomic admission check for the Stage G restore request.
  * Success means queued, not physically received by BH. */
 uint8_t tryAddToUARTSendQueue(const uint8_t *data, size_t length) {
     uint8_t ok=0u;
@@ -931,7 +931,7 @@ void addToUARTSendQueueDuringInterrupt(const uint8_t *data, size_t length) {
     		SET_BIT(huart1.Instance->CR1, USART_CR1_TE);	// enable TX
     		__HAL_UART_CLEAR_FLAG(&huart1, UART_CLEAR_OREF | UART_CLEAR_NEF | UART_CLEAR_TCF); //clear any error
     		//onboardLed_red_on();
-			/* Never overwrite the snapshot while an interrupt-driven TX is active. */
+			/* @Shadin: Never overwrite the snapshot while an interrupt-driven TX is active. */
 			if (huart1.State != HAL_UART_STATE_READY &&
 			    huart1.State != HAL_UART_STATE_BUSY_RX) {
 				CLEAR_BIT(huart1.Instance->CR1, USART_CR1_TE);

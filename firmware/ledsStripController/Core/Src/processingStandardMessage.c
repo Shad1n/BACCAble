@@ -535,7 +535,7 @@ void processingStandardMessage(){
 					nativeMaxHoldUpdate(3); //battery state of charge  //even if no more used
 					nativeMaxHoldUpdate(4); //battery current //just for test commented, to use another message 0x41E
 				
-					// Retain raw 0x41A bytes for diagnostic parameters.
+					// @Shadin: Retain raw 0x41A bytes for diagnostic parameters.
 					memcpy(last_41A_raw_data, rx_msg_data, rx_msg_header.DLC);
 					if (rx_msg_header.DLC < 8) {
 						memset(last_41A_raw_data + rx_msg_header.DLC, 0, 8 - rx_msg_header.DLC);
@@ -575,7 +575,7 @@ void processingStandardMessage(){
 				}
 				//current DNA mode, also called "Drive Style Status" (RDNA mode) is on byte 7, from bit 0 to bit 4 (0x0=Natural, 0x2=dynamic, 0x4=AllWeather, 0xC=race)
 				currentDNAmode=rx_msg_data[7] & 0x1F; //1F is the mask from bit 4 to 0
-				dnaRestoreLast46CTime=currentTime; // Stage G
+				dnaRestoreLast46CTime=currentTime; // @Shadin: Stage G
 				if (ESCandTCinversion){
 					if(currentDNAmode!=0x0C){ //if not in race
 						rx_msg_data[7] = (rx_msg_data[7] & ~0x1F) | 0x0C;  //set Race mode (0x30) to show on IPC the race screen (msg from body to IPC, ETM, ESEM)
@@ -917,7 +917,7 @@ void processingStandardMessage(){
 			//the park assistant button press event is on byte 1 bit 5 (1=pressed)
 			break;
 		//@netzmark MUTE_ON_REVERSE code - end
-		case 0x000005BE:
+		case 0x000005BE: /* @Shadin: retain fresh mute feedback for HU restore. */
 			#if defined(BHbaccable)
 				if(rx_msg_header.DLC >= 1) {
 					if(rx_msg_data[0] == 0x30) {
@@ -957,7 +957,7 @@ void processingStandardMessage(){
 			#if defined(C1baccable)
 				if(rx_msg_header.DLC>=8){
 					//switch ((rx_msg_data[7]>>4) & 0x07) { //ori Gaucho code
-					switch ((rx_msg_data[7]>>4) & 0x07) { // preserve all ACC states; only 0 means ACC off
+					switch ((rx_msg_data[7]>>4) & 0x07) { // @Shadin: preserve all ACC states; only 0 means ACC off
 						case 0x00: //ACC is off
 							//onboardLed_red_on();
 							ACC_Disabled=1; //enable additional parameter menu commands

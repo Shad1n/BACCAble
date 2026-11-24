@@ -70,7 +70,7 @@
     #define C1cmdDtcLogAck         0x43
     #define C1cmdDtcLogClearResult 0x44
 
-	#define BHcmdDnaMemoryRestore 0x25 // Stage G: DNA selector request //second byte of the message to BH bus, identifies the request to enable park mirror and to store current mirror position
+	#define BHcmdDnaMemoryRestore 0x25 // @Shadin: Stage G: DNA selector request //second byte of the message to BH bus, identifies the request to enable park mirror and to store current mirror position
 
 	#define C2_Bh_cmdSetPedalBoostStatus		0x39 //second byte of the message to C2 and BH bus, identifies the pedal booster function status. Third byte of the message will contain its status
 	#define	C2_Bh_cmdFunctHAS_Disabled			0x3A //second byte of the message to C2 and BH bus, identifies the request to disable HAS function.

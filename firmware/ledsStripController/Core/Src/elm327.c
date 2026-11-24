@@ -630,7 +630,7 @@ static int16_t elm_ring_get(void){
 // ------------------------------------------------------------------ AT commands
 static void elm_handle_at(const char *at){
 
-	// Stage G passive ignition snapshot; no CAN transmit or flash writes.
+	// @Shadin: Stage G passive ignition snapshot; no CAN transmit or flash writes.
 	// Available only while the existing ELM327 USB mode is enabled.
 	#if defined(C1baccable)
 	if(!strcmp(at, "IGLOG")){

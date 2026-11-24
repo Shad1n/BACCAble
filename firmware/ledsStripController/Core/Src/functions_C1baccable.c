@@ -161,7 +161,7 @@ int dna_journal_save(const dna_flash_ops *o,dna_journal_state *s,uint8_t mode) {
  * Original storage behavior, Flash addresses, format and comments preserved.
  * Keep config_store.h as the shared public interface.
  */
-/* Stage G transactional C1 settings storage. Two 2-KiB pages, legacy read-only fallback.
+/* @Shadin: Stage G transactional C1 settings storage. Two 2-KiB pages, legacy read-only fallback.
  * Never erase the old settings page (0x0801F800). Both copies remain independently valid.
  * Commit halfword is written last. CRC covers all 34 parameter halfwords.
  */
@@ -546,10 +546,10 @@ uint8_t config_store_save(const uint16_t *values, uint8_t count) {
 	}
 
 	void C1baccablePeriodicCheck(){
-		// Stage G diagnostics: detect CAN silence while normal BACCAble is active.
+		// @Shadin: Stage G diagnostics: detect CAN silence while normal BACCAble is active.
 		// Passive RAM logging only; never sends CAN or writes flash.
 		stageg_ign_diag_check_timeouts(currentTime);
-		// Stage G: persistent restore, power-on armed on USB-powered Canable.
+		// @Shadin: Stage G: persistent restore, power-on armed on USB-powered Canable.
 		dna_stageg_set_enabled(dnaMemoryFunctionEnabled);
 		uint8_t stageg_target=0xFF;
 		if(dna_stageg_tick(currentTime,currentRpmSpeed,currentDNAmode,&stageg_target)==1){
@@ -1433,7 +1433,7 @@ if (baccableDashboardMenuVisible &&
 								uint8_t b0=faultsDTCbytes[faultsDTCsubmenuIndex][0];
 								uint8_t b1=faultsDTCbytes[faultsDTCsubmenuIndex][1];
 								uint8_t b2=faultsDTCbytes[faultsDTCsubmenuIndex][2];
-                                // Stage C1c: select ECU label using the committed Body DTC boundary.
+                                // @Shadin: Stage C1c: select ECU label using the committed Body DTC boundary.
                                 static const char dtcLetter[4]={'P','C','B','U'};
                                 const char *ecuLabel = stageC2AbsIndex(faultsDTCsubmenuIndex) ? "ABS " : (stageC1cDtcIsEcmIndex(faultsDTCsubmenuIndex) ? "ECM " : "BCM ");
                                 memcpy(&dashboard_main_menu_array[2][0], ecuLabel, 4);
@@ -2550,7 +2550,7 @@ if (baccableDashboardMenuVisible &&
 	}
  
 	uint8_t saveOnflash(){
-        // Stage G: transactional two-copy config, never erase the legacy settings page.
+        // @Shadin: Stage G: transactional two-copy config, never erase the legacy settings page.
 		/* @Shadin: Reuse the transactional store's existing parameter count. */
 		uint16_t params[CFG_TOTAL] = {
 		  immobilizerEnabled,
@@ -3314,7 +3314,7 @@ const AbsTransport *abs_c1_service_state(void) { return 0; }
 /* @Shadin: DNA StageG implementation moved from dna_stageg.c into
  * Gaucho C1 function source. State machine and timing unchanged.
  */
-/* Stage G v3.9.0 C1 adapter. dna_stageg_tick() is the sole restore action path. */
+/* @Shadin: Stage G v3.9.0 C1 adapter. dna_stageg_tick() is the sole restore action path. */
 #include "compile_time_defines.h"
 #if defined(C1baccable)
 #include "functions_C1baccable.h"

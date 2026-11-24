@@ -387,7 +387,7 @@
 		// faultsStateMachine:
 		//   0xFF=inattivo | 0=attende conf.sessione (50 03) | 1=attende ReadDTC resp
 		//   2=ricezione multiframe in corso | 3=lista DTC pronta | 4=TIMEOUT display
-		#define FAULTS_DTC_MAX 60 /* Stage C1e: 20 per ECU; ABS reserved, inactive */
+		#define FAULTS_DTC_MAX 60 /* @Shadin: Stage C1e: 20 per ECU; ABS reserved, inactive */
 		extern uint8_t  faultsStateMachine;
 		extern uint8_t  faultsDTCcount;
 		extern uint8_t  faultsDTCsubmenuIndex;

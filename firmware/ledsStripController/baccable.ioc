@@ -70,6 +70,7 @@ ProjectManager.MainLocation=Core/Src
 ProjectManager.NoMain=false
 ProjectManager.PreviousToolchain=
 ProjectManager.ProjectBuild=false
+# @Shadin: Match the actual CubeMX project file and name.
 ProjectManager.ProjectFileName=baccable.ioc
 ProjectManager.ProjectName=baccable
 ProjectManager.ProjectStructure=

@@ -105,7 +105,7 @@ DRESULT disk_write(
 {
     HAL_StatusTypeDef ret = HAL_OK;
 
-    /* Never erase or program C2/BH reserved persistent-data pages.
+    /* @Shadin: Never erase or program C2/BH reserved persistent-data pages.
      * Entire 2-KiB Flash pages are erased by this driver. */
     if (count == 0 || sector >= 128u || count > (128u - sector)) return RES_PARERR;
     for (UINT i = 0; i < count; ++i) {
@@ -145,7 +145,7 @@ DRESULT disk_write(
         fp->sector_data_index[sector_relative_pos] = i * FF_MIN_SS;
     }
 
-    FlashPage *iter = (ret == HAL_OK) ? fp_head : NULL;
+    FlashPage *iter = (ret == HAL_OK) ? fp_head : NULL; /* @Shadin: skip programming after allocation failure */
     while (iter)
     {
         ret = HAL_FLASH_Unlock();

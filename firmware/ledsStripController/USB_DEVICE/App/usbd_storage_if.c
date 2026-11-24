@@ -245,12 +245,12 @@ int8_t STORAGE_Read_FS(uint8_t lun, uint8_t *buf, uint32_t blk_addr, uint16_t bl
 {
   /* USER CODE BEGIN 6 */
 #ifdef ENABLE_USB_MASS_STORAGE
-  /* The SCSI layer validates normal requests, but keep this callback bounded
+  /* @Shadin: The SCSI layer validates normal requests, but keep this callback bounded
    * as well. Subtraction avoids overflow in blk_addr + blk_len. */
   if (lun != 0u || blk_addr > STORAGE_BLK_NBR ||
       blk_len > (STORAGE_BLK_NBR - blk_addr)) return -1;
 
-  /* Keep the 128-sector FAT geometry, but never expose reserved Flash pages.
+  /* @Shadin: Keep the 128-sector FAT geometry, but never expose reserved Flash pages.
    * Split reads that cross LBA 116 and synthesize zeros for LBAs 116..127. */
   uint32_t visible_count = 0u;
   if (blk_addr < 116u) {

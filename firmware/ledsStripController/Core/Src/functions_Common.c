@@ -344,8 +344,8 @@ void system_hex32(char *out, uint32_t val){
 	}
 }
 
-/* USB MSC files reside in C2/BH local Flash, not in C1 settings Flash.
- * Update only when content differs. Never format on mount failure.
+/* @Shadin: USB MSC files reside in C2/BH local Flash, not in C1 settings Flash.
+ * Update only when content differs; formatting is handled by storage_init.
  * disk_write rejects any page touching the reserved persistent-data region. */
 #ifdef ENABLE_USB_MASS_STORAGE
 /* @Shadin: Fail closed until FAT protection is verified at startup. */

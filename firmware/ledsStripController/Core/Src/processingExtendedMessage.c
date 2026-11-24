@@ -55,7 +55,7 @@ static DtcStreamDecoder ecuDtcStream;
 static DtcEcuResults ecuDtcResults;
 uint16_t stageC1dDtcTotal(void) { return ecuDtcResults.total; }
 static uint8_t activeDtcEcu;
-/* Stage C1d: extended UDS response-pending wait, DTC reader only. */
+/* @Shadin: Stage C1d: extended UDS response-pending wait, DTC reader only. */
 static uint8_t dtcResponsePending;
 uint32_t stageC1dDtcTimeoutMs(void) {
     return (faultsStateMachine <= 1 && dtcResponsePending) ? 5000u : 2000u;
@@ -128,7 +128,7 @@ void stageC1cDtcBegin(void) {
     faultsDTCsubmenuIndex = 0;
     dtcStartEcu(0);
 }
-/* Stage C2: ABS must start even when ECM returns an error or times out. */
+/* @Shadin: Stage C2: ABS must start even when ECM returns an error or times out. */
 static void stageC2StartAbs(void) {
 #if STAGE_C1C_OPTIONAL_ECU_STATUS_UI
     if (c1cStatus[2] != C1C_ECU_NOT_TESTED) return;
@@ -390,7 +390,7 @@ extern uint8_t requestedId;
 /* @netzmark: END */
 
 #if defined(C2baccable)
-/* Stage C2: stream ABS UDS DTC records, retaining at most 20 codes. */
+/* @Shadin: Stage C2: stream ABS UDS DTC records, retaining at most 20 codes. */
 static void c2AbsDtcConsume(uint8_t b) {
     uint16_t pos = absFaultsRxReceived++;
     if (pos < 3u) return; /* 59 02 available-status-mask */
@@ -807,7 +807,7 @@ if (baccableDashboardMenuVisible && dashboard_menu_indent_level == 1 && main_das
 		}
 		//pumpForce test25/07/2026 - END
 
-        // Stage C1b: Gaucho-derived streaming Body ECU DTC reader.
+        // @Shadin: Stage C1b: Gaucho-derived streaming Body ECU DTC reader.
         // The established Netzmark UDS parameter-processing path is unchanged.
         if (rx_msg_header.ExtId == (activeDtcEcu ? 0x18DAF110 : 0x18DAF140) && faultsStateMachine < 3) {
             const uint8_t pci = rx_msg_data[0];
