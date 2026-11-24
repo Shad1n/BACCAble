@@ -6,6 +6,11 @@
  */
 
 #include "functions_Common.h"
+#include "usb_device.h"
+#ifdef ENABLE_USB_MASS_STORAGE
+#include "ff.h"
+#include "diskio.h" /* @Shadin: FAT12 reserved-cluster protection */
+#endif
 #include "debug.h"
 #include <string.h>	// @netzmark: for strlen
 #include <stdio.h> /* @Shadin: bounded DTC log records */
@@ -343,7 +348,10 @@ void system_hex32(char *out, uint32_t val){
  * Update only when content differs. Never format on mount failure.
  * disk_write rejects any page touching the reserved persistent-data region. */
 #ifdef ENABLE_USB_MASS_STORAGE
+/* @Shadin: Fail closed until FAT protection is verified at startup. */
+static uint8_t storageProtectionReady;
 static void usb_storage_sync_text(const char *name, const char *expected) {
+    if (!storageProtectionReady) return;
     FIL file;
     FRESULT result;
     UINT read_count = 0, written = 0;
@@ -373,24 +381,109 @@ static void usb_storage_sync_text(const char *name, const char *expected) {
 }
 #endif
 
-/* @Shadin: Restore Gaucho's simple first-boot FAT initialization.
- * The USB volume holds TXT files only; C2/BH settings are stored separately.
- * Keep an existing FAT volume. If it cannot be mounted, recreate it.
- * Do not format on every ignition cycle: DTC_LOG.TXT must persist normally.
- * The reserved upper Flash pages remain protected by disk_write(). */
+/* @Shadin: Keep FAT12 allocations out of the three persistent-data Flash pages.
+ * The standard 128-sector SFD volume uses 512-byte clusters, with data at LBA 4.
+ * Its final twelve clusters (114..125) overlap the protected LBA 116..127.
+ * Preserve existing TXT files when those entries are free or already marked bad.
+ * Unknown FAT layouts or occupied protected clusters are NOT rewritten in place. */
+#ifdef ENABLE_USB_MASS_STORAGE
+static uint16_t storage_fat12_entry(const BYTE *fat, uint16_t cluster) {
+    uint16_t offset = (uint16_t)(cluster + cluster / 2u);
+    uint16_t value = (uint16_t)fat[offset] | ((uint16_t)fat[offset + 1u] << 8);
+    return (cluster & 1u) ? (value >> 4) : (value & 0x0FFFu);
+}
+
+static void storage_fat12_set_bad(BYTE *fat, uint16_t cluster) {
+    uint16_t offset = (uint16_t)(cluster + cluster / 2u);
+    if (cluster & 1u) {
+        fat[offset] = (BYTE)((fat[offset] & 0x0Fu) | 0x70u);
+        fat[offset + 1u] = 0xFFu;
+    } else {
+        fat[offset] = 0xF7u;
+        fat[offset + 1u] = (BYTE)((fat[offset + 1u] & 0xF0u) | 0x0Fu);
+    }
+}
+
+/* Return 1 if protected, 0 if incompatible/occupied or a Flash I/O error.
+ * The caller may reformat only when mount had already failed; never silently
+ * erase a successfully mounted volume that might contain DTC history. */
+static int storage_protect_fat12(void) {
+    BYTE fat[FF_MIN_SS];
+    BYTE *boot = fat; /* Reuse one sector buffer to limit stack usage. */
+    if (disk_read(0, boot, 0, 1) != RES_OK) return 0;
+    /* Validate exactly the geometry created by our existing f_mkfs options. */
+    if (boot[510] != 0x55u || boot[511] != 0xAAu ||
+        boot[11] != 0x00u || boot[12] != 0x02u ||
+        boot[13] != 1u || boot[14] != 1u || boot[15] != 0u ||
+        boot[16] != 1u || boot[17] != 32u || boot[18] != 0u ||
+        boot[19] != 128u || boot[20] != 0u ||
+        boot[22] != 1u || boot[23] != 0u) return 0;
+    if (disk_read(0, fat, 1, 1) != RES_OK) return 0;
+    for (uint16_t cl = 114u; cl <= 125u; ++cl) {
+        uint16_t entry = storage_fat12_entry(fat, cl);
+        if (entry != 0u && entry != 0xFF7u) return 0;
+    }
+    /* Reject existing chains pointing into the reserved region. */
+    for (uint16_t cl = 2u; cl < 114u; ++cl) {
+        uint16_t entry = storage_fat12_entry(fat, cl);
+        if (entry >= 114u && entry <= 125u) return 0;
+    }
+    int changed = 0;
+    for (uint16_t cl = 114u; cl <= 125u; ++cl) {
+        if (storage_fat12_entry(fat, cl) == 0u) {
+            storage_fat12_set_bad(fat, cl);
+            changed = 1;
+        }
+    }
+    if (changed && disk_write(0, fat, 1, 1) != RES_OK) return 0;
+    if (disk_ioctl(0, CTRL_SYNC, NULL) != RES_OK) return 0;
+    if (disk_read(0, fat, 1, 1) != RES_OK) return 0;
+    for (uint16_t cl = 114u; cl <= 125u; ++cl) {
+        if (storage_fat12_entry(fat, cl) != 0xFF7u) return 0;
+    }
+    return 1;
+}
+#endif
+
+/* @Shadin: Only format an erased volume, never an unknown or damaged one.
+ * Check all writable sectors so a damaged boot sector cannot hide old files. */
+#ifdef ENABLE_USB_MASS_STORAGE
+static int storage_is_erased(void) {
+    BYTE sector[FF_MIN_SS];
+    for (LBA_t lba = 0; lba < 116u; ++lba) {
+        if (disk_read(0, sector, lba, 1) != RES_OK) return 0;
+        for (UINT i = 0; i < sizeof(sector); ++i)
+            if (sector[i] != 0xFFu) return 0;
+    }
+    return 1;
+}
+#endif
+
+/* @Shadin: Verify protection with FatFs unmounted, then remount to discard
+ * stale FAT cache contents. A failed protection never enables TXT writes. */
 void storage_init(void){
 #ifdef ENABLE_USB_MASS_STORAGE
+    storageProtectionReady = 0u;
     FRESULT result = f_mount(&fs, "", 1);
-    if (result != FR_OK) {
+    if (result == FR_NO_FILESYSTEM) {
+        (void)f_unmount("");
+        if (!storage_is_erased()) return;
         BYTE work[FF_MIN_SS];
         MKFS_PARM opt = { .fmt = FM_FAT | FM_SFD, .n_fat = 1,
                           .align = 0, .n_root = 32, .au_size = FF_MIN_SS };
-        (void)f_unmount("");
         result = f_mkfs("", &opt, work, sizeof(work));
         if (result == FR_OK) result = f_mount(&fs, "", 1);
     }
-    if (result == FR_OK) {
-        /* @Shadin: Create the essential file before optional metadata updates. */
+    if (result != FR_OK || fs.fs_type != FS_FAT12 || fs.volbase != 0u ||
+        fs.fatbase != 1u || fs.database != 4u || fs.n_fats != 1u ||
+        fs.fsize != 1u || fs.csize != 1u || fs.n_fatent != 126u ||
+        fs.n_rootdir != 32u) {
+        (void)f_unmount("");
+        return;
+    }
+    if (f_unmount("") != FR_OK || !storage_protect_fat12()) return;
+    if (f_mount(&fs, "", 1) == FR_OK) {
+        storageProtectionReady = 1u;
         usb_storage_sync_text("VERSION.TXT", _FW_VERSION);
         (void)f_unlink("HELLO.TXT");
         (void)f_unlink("BACCABLE.TXT");
@@ -517,6 +610,7 @@ static FRESULT dtcLogText(FIL *f,const char *line) {
     return (result==FR_OK && done==len)?FR_OK:FR_DISK_ERR;
 }
 static uint8_t dtcLogPersist(void) {
+    if (!storageProtectionReady) return 2u; /* @Shadin: reject unprotected FAT */
     if (usbConnectedToSlave) return 0u; /* never mutate FAT behind a mounted host */
     if (f_mount(&fs,"",1)!=FR_OK) return 2u;
     FIL f;
@@ -611,7 +705,7 @@ void dtcLogStorageService(void) {
     }
     if(dtcLogClearRequested) {
         dtcLogClearRequested=0u;
-        if(usbConnectedToSlave || dtcLogRx.valid) {dtcLogClearAck(0u);return;}
+        if(!storageProtectionReady || usbConnectedToSlave || dtcLogRx.valid) {dtcLogClearAck(0u);return;} /* @Shadin */
         if(f_mount(&fs,"",1)!=FR_OK) {dtcLogClearAck(0u);return;}
         FRESULT rc=f_unlink(DTC_LOG_FILE);
         f_unmount("");
@@ -868,6 +962,7 @@ void snifferCheckActivationTimeout(void){
 
 //Brings the usb up as cdc. Called from the main loop only: MX_USB_DEVICE_Init() waits on HAL_Delay().
 void snifferUsbStartIfRequested(void){
+	if(usbDisabledUntilReboot) return;
 	if(snifferUsbStartRequested==0) return;
 	snifferUsbStartRequested=0;
 	if(snifferUsbInited) return; //already running as cdc, nothing to do until the next power cycle. this is a one shot bring up: no retry if the host never configures us.

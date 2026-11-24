@@ -1,7 +1,8 @@
 # BACCAble – Contents and Development History
 
-**Current verified release:** v3.9.3.2 VERIFIED
-**Previous verified reference:** v3.9.3.1 VERIFIED (rollback)
+**Current development version:** v3.9.4.2 PREBUILD (USB storage consistency)
+**Current verified release:** v3.9.4.1 VERIFIED (FAT12 FailSafe; user-reported hardware testing)
+**Previous verified reference:** v3.9.3.2 VERIFIED
 **Upstream:** [Gaucho BACCAble](https://github.com/gaucho1978/BACCAble) and [Netzmark BACCAble](https://github.com/netzmark/BACCAble)  
 **Custom modifications:** `@Shadin`
 
@@ -30,7 +31,7 @@ The following are historical decisions, not a complete inventory of either upstr
 - **Read faults** and **Clear faults** support ECM, BCM and ABS, including multiple DTCs and status information.
 - Manual Read/Clear actions are written to `DTC_LOG.TXT` using `1.`, `2.`, ... event numbering, with a blank line between entries and no timestamps or `END` markers.
 - **Clear DTC logs** requires long OK; `VERSION.TXT` is retained.
-- On C2/BH, a missing or invalid FAT12 volume is initialized at startup using Gaucho-style mount-or-format logic. Existing valid volumes are preserved; reformatting an invalid volume may erase `DTC_LOG.TXT`. C1 does not use USB mass storage.
+- On C2/BH, an erased FAT12 volume is initialized at startup. Existing compatible volumes are preserved; unknown or damaged volumes are not automatically formatted. TXT writes require verified reserved-cluster protection. C1 does not use USB mass storage.
 
 ### Settings and vehicle features
 
@@ -82,13 +83,31 @@ Restored Gaucho's first-boot FAT12 initialization for erased C2/BH USB storage, 
 
 Applied Gaucho commit `3629e6a` menu-label correction: when engine RPM falls below 400 and 4WD Disable resets, the ` En` label is restored on the fixed 4WD menu entry (index 8), rather than overwriting the currently selected menu entry. No change to 4WD control behavior. The fix is retained in v3.9.3.1.
 
-### v3.9.3.1 – Gaucho Simple FAT (VERIFIED)
+### v3.9.3.1 – Gaucho Simple FAT
 
 Restored Gaucho-style FAT mount-or-format handling on C2/BH without the extra blank-Flash scan. Corrected FatFs `GET_SECTOR_COUNT` and `GET_BLOCK_SIZE` output types; `VERSION.TXT` is created or updated before legacy-file cleanup. Existing valid FAT volumes are reused. The last 6 KiB of Flash remains protected, so the advertised USB volume capacity must not be treated as fully writable. The user confirmed successful C1/C2/BH builds and flashing, and FAT plus `VERSION.TXT` creation on erased C2 and BH boards. DTC logging was not separately vehicle-tested with this release.
 
-### v3.9.3.2 – Netzmark menu speed (VERIFIED)
+### v3.9.3.2 – Netzmark menu speed
 
 Integrated Netzmark's faster menu timing: C1 serial reply timing 250 to 150 ms (linked C2/BH timing 200 to 100 ms) and BH dashboard frame interval 40 to 15 ms. The existing frame order and ignition-guarded display behavior are retained. User-reported C1/C2/BH builds and vehicle checks passed for menu response, text replacement, long UDS names, Setup / Params Setup, communication stability and vehicle sleep.
+
+### v3.9.4.0 – Gaucho USB IRQ storm protection
+
+Integrated Gaucho commit `495d72a` (upstream V.3.9.4): count consecutive USB interrupts without a SysTick and disable USB until MCU reset if the 254-interrupt threshold is reached. USB initialization and Sniffer/ELM327 USB bring-up honor the lockout. No other firmware behavior was intentionally changed. Upstream release is accepted as tested by Gaucho; local C1/C2/BH builds passed; vehicle verification remains pending. The first three version components follow Gaucho, while the fourth is the `@Shadin` subversion.
+
+### v3.9.4.1 – FAT12 reserved-area protection
+
+- Preserve the 128-sector USB geometry and physical write guard; mark clusters 114–125 as bad and verify by readback before enabling TXT writes.
+- Preserve compatible existing volumes; initialize erased volumes only. Unknown or occupied layouts disable TXT writes, including DTC append and deletion, without disabling ECU diagnostics.
+- Raw USB read range is unchanged. Local STM32CubeIDE and hardware verification pending.
+
+### v3.9.4.2 – USB Storage Consistency (VERIFIED)
+
+- Keep the 128-sector FAT12 geometry and the verified FAT12 reserved-cluster protection.
+- Report the USB LUN as write-protected; set the MODE SENSE 6/10 WP bits from the storage callback, and reject any write callback with a negative status. FatFs internal TXT and DTC operations remain available.
+- Preserve physical reads for sectors 0–115; return zero-filled data for sectors 116–127, including requests spanning the boundary, without exposing reserved Flash bytes.
+- Replace stale `timerTest` builder paths with per-configuration project-local build paths and remove its stale project reference. All C1/C2/BH configurations are retained.
+- C1/C2/BH STM32CubeIDE builds passed on 2026-11-24 after the MODE SENSE WP-bit addition; corresponding ELF/MAP outputs are present. Hardware verification remains pending.
 
 ## Files in this archive
 

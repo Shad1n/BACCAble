@@ -79,6 +79,11 @@
 /** USB Device initialization function. */
 void MX_USB_DEVICE_Init(void);
 
+#define USB_STORM_IRQ_THRESHOLD 254
+extern volatile uint8_t usbStormIrqCount;
+extern volatile uint8_t usbDisabledUntilReboot;
+extern volatile uint16_t usbStormIstr;
+
 //elm327 function 26/08/2026 - usb port brought up/down on request, from the "ELM327" entry of the dashboard
 //setup menu: while the mode is off the connector stays silent. See usb_device.c.
 #include "compile_time_defines.h"

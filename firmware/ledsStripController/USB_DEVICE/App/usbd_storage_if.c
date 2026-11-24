@@ -231,7 +231,8 @@ int8_t STORAGE_IsReady_FS(uint8_t lun)
 int8_t STORAGE_IsWriteProtected_FS(uint8_t lun)
 {
   /* USER CODE BEGIN 5 */
-  return (USBD_OK);
+  (void)lun;
+  return (USBD_FAIL); /* @Shadin: SCSI checks nonzero to reject host writes. */
   /* USER CODE END 5 */
 }
 
@@ -244,12 +245,36 @@ int8_t STORAGE_Read_FS(uint8_t lun, uint8_t *buf, uint32_t blk_addr, uint16_t bl
 {
   /* USER CODE BEGIN 6 */
 #ifdef ENABLE_USB_MASS_STORAGE
-	memcpy( buf,
-	          (const void *)(USB_FLASH_START_ADDRESS + ( blk_addr * STORAGE_BLK_SIZ )),
-	          (blk_len * STORAGE_BLK_SIZ)
-	        );
+  /* The SCSI layer validates normal requests, but keep this callback bounded
+   * as well. Subtraction avoids overflow in blk_addr + blk_len. */
+  if (lun != 0u || blk_addr > STORAGE_BLK_NBR ||
+      blk_len > (STORAGE_BLK_NBR - blk_addr)) return -1;
+
+  /* Keep the 128-sector FAT geometry, but never expose reserved Flash pages.
+   * Split reads that cross LBA 116 and synthesize zeros for LBAs 116..127. */
+  uint32_t visible_count = 0u;
+  if (blk_addr < 116u) {
+    visible_count = blk_len;
+    if (visible_count > (116u - blk_addr))
+      visible_count = 116u - blk_addr;
+    if (visible_count != 0u) {
+      memcpy(buf,
+             (const void *)(USB_FLASH_START_ADDRESS + blk_addr * STORAGE_BLK_SIZ),
+             visible_count * STORAGE_BLK_SIZ);
+    }
+  }
+  if (visible_count < blk_len) {
+    memset(buf + visible_count * STORAGE_BLK_SIZ, 0,
+           (blk_len - visible_count) * STORAGE_BLK_SIZ);
+  }
+#else
+  (void)lun;
+  (void)buf;
+  (void)blk_addr;
+  (void)blk_len;
+  return -1;
 #endif
-	return (USBD_OK);
+  return (USBD_OK);
   /* USER CODE END 6 */
 }
 
@@ -261,7 +286,11 @@ int8_t STORAGE_Read_FS(uint8_t lun, uint8_t *buf, uint32_t blk_addr, uint16_t bl
 int8_t STORAGE_Write_FS(uint8_t lun, uint8_t *buf, uint32_t blk_addr, uint16_t blk_len)
 {
   /* USER CODE BEGIN 7 */
-	return (USBD_FAIL);
+	(void)lun;
+	(void)buf;
+	(void)blk_addr;
+	(void)blk_len;
+	return -1; /* @Shadin: MSC SCSI treats negative callback values as write errors. */
   /* USER CODE END 7 */
 }
 
